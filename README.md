@@ -1,16 +1,31 @@
-# Nice Clipboard History
+# Nice Clipboard
 
-<!-- Preview image goes here once it exists, e.g. ![Nice Clipboard History](preview.png) -->
+## TL;DR for humans
 
+**Try it live:** [roehrbacher.com/nice-clipboard](https://roehrbacher.com/nice-clipboard) <!-- live demo, link goes live once the site exists -->
 
-Clipboard history for [Omarchy](https://omarchy.org) with the feel of
-[GNOME Clipboard History](https://github.com/SUPERCILEX/gnome-clipboard-history):
-pinned items, incognito mode, instant regex search and Alt+1…9 quick picks.
+A clipboard history for [Omarchy](https://omarchy.org) that looks like it ships with it.
+
+- **Flux integration:** send any item to your phone, see what came from it, and incognito pauses phone sync.
+- **Paste queue:** pick several items in order, then paste them one after another.
+- **Nice shortcuts:** Alt+V opens it, Alt+1…9 pastes straight away, everything works from the keyboard.
+- **Screenshot text recognition (OCR):** copy the text out of any copied screenshot.
+- **QR code recognition:** open a QR link, or copy a Wi-Fi password straight from a QR code.
+- **Omarchy theme colours:** follows your current theme, popup sits under its bar icon.
+- **Incognito mode:** saves nothing while it's on.
+- **Paste as Markdown:** copied web or Docs formatting pastes as clean Markdown.
+- **Smart search:** regex plus filters like `type:image`, `app:firefox` or `today`.
+- **Pinned items** that never expire, and **password-manager copies are never stored**.
+
+<!-- Preview image goes here, e.g. ![Nice Clipboard](preview.png) -->
 
 It is built on Omarchy's own clipboard manager (`omarchy.clipboard`) and
 **replaces** it as a clone (`"clonedFrom": "omarchy.clipboard"`), so there is
 only ever one clipboard watcher running. Your existing stock history is
-imported once on first start. Uses the current theme's menu colors.
+imported once on first start. To hear about upstream changes, run
+`omarchy-upstream-drift` after `omarchy update`: it lists what Omarchy changed in its stock clipboard since this copy.
+
+# Details for Agents
 
 ## Requirements
 
@@ -19,41 +34,6 @@ imported once on first start. Uses the current theme's menu colors.
   `tesseract` plus language data for "Copy text from screenshot",
   `python` for Paste as Markdown, and [Flux](https://github.com/bjarneo/flux)
   for phone sync. Everything else works without them.
-
-## Shortcuts
-
-| Key | What it does |
-|---|---|
-| **Alt+V** | open / close clipboard history |
-| Super+Shift+V | the same (GNOME default key, optional binding) |
-| Super+Ctrl+V | the same (stock Omarchy key, routed to this plugin) |
-| **Super+Shift+Ctrl+V** | incognito on/off from anywhere (with a notification) |
-
-In the popup:
-
-| Key | What it does |
-|---|---|
-| type | search (case-insensitive regex; invalid regex = plain text) |
-| ↑ ↓ / Ctrl+K Ctrl+J, PgUp PgDn, Home End | move through the list |
-| Enter / click | paste into the window you came from |
-| Shift+Enter | copy only (select it without pasting) |
-| Alt+Enter | open (URL in browser, text in editor, image in editor) |
-| Ctrl+click / Ctrl+Space | add the row to the paste queue (numbered 1, 2, 3 …); again takes it out |
-| Ctrl+click / Ctrl+Space 2+ items, then close the popup (Enter, click, Esc twice or click outside) | start the paste queue: every Super+V (or Ctrl+V) pastes the next item, Esc cancels |
-| Alt+1…9 | paste the Nth item from the top, pinned items first (pastes when you let go of Alt) |
-| → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
-| Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
-| Delete (or the trash icon) | delete the item (with search text selected: delete that text). A pinned item turns red first: press Del again within 3 s to delete it; any other key cancels |
-| Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in the settings view: send the current clipboard |
-| Shift+Delete | clear history (asks first; pinned items stay) |
-| Ctrl+I (or the Incognito switch in the footer, or right-click the bar icon) | incognito on/off |
-| Backspace, Ctrl+Backspace, ← →, Ctrl+Z | edit the search |
-| Ctrl+U | clear the search |
-| Shift+← → / Shift+Home End, Ctrl+A, mouse drag | select search text |
-| Ctrl+C / Ctrl+X (with search text selected) | copy / cut it to the clipboard (becomes a new history item) |
-| Ctrl+V | paste into the search |
-| the gear icon in the footer | settings view: ↑ ↓ pick a setting, Enter toggles it, Esc goes back to the list |
-| Esc | clear the search, then close |
 
 ## Behaviour
 
@@ -201,10 +181,46 @@ IPC (for scripts): `omarchy-shell shell call timon.clipboard toggleIncognito x`,
 `setIncognito on|off`, `status x` (includes `incognito` and `fluxPaused`). The
 older names `togglePrivate` and `setPrivateMode` still work.
 
+
+## Shortcuts
+
+| Key | What it does |
+|---|---|
+| **Alt+V** | open / close clipboard history |
+| Super+Shift+V | the same (GNOME default key, optional binding) |
+| Super+Ctrl+V | the same (stock Omarchy key, routed to this plugin) |
+| **Super+Shift+Ctrl+V** | incognito on/off from anywhere (with a notification) |
+
+In the popup:
+
+| Key | What it does |
+|---|---|
+| type | search (case-insensitive regex; invalid regex = plain text) |
+| ↑ ↓ / Ctrl+K Ctrl+J, PgUp PgDn, Home End | move through the list |
+| Enter / click | paste into the window you came from |
+| Shift+Enter | copy only (select it without pasting) |
+| Alt+Enter | open (URL in browser, text in editor, image in editor) |
+| Ctrl+click / Ctrl+Space | add the row to the paste queue (numbered 1, 2, 3 …); again takes it out |
+| Ctrl+click / Ctrl+Space 2+ items, then close the popup (Enter, click, Esc twice or click outside) | start the paste queue: every Super+V (or Ctrl+V) pastes the next item, Esc cancels |
+| Alt+1…9 | paste the Nth item from the top, pinned items first (pastes when you let go of Alt) |
+| → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
+| Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
+| Delete (or the trash icon) | delete the item (with search text selected: delete that text). A pinned item turns red first: press Del again within 3 s to delete it; any other key cancels |
+| Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in the settings view: send the current clipboard |
+| Shift+Delete | clear history (asks first; pinned items stay) |
+| Ctrl+I (or the Incognito switch in the footer, or right-click the bar icon) | incognito on/off |
+| Backspace, Ctrl+Backspace, ← →, Ctrl+Z | edit the search |
+| Ctrl+U | clear the search |
+| Shift+← → / Shift+Home End, Ctrl+A, mouse drag | select search text |
+| Ctrl+C / Ctrl+X (with search text selected) | copy / cut it to the clipboard (becomes a new history item) |
+| Ctrl+V | paste into the search |
+| the gear icon in the footer | settings view: ↑ ↓ pick a setting, Enter toggles it, Esc goes back to the list |
+| Esc | clear the search, then close |
+
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/roehrbacher/omarchy-clipboard --enable
+omarchy plugin add https://github.com/roehrbacher/Nice-Clipboard --enable
 ```
 
 The plugin ID is `timon.clipboard`. Enabling it switches off the stock

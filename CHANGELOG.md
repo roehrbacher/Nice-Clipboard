@@ -2,6 +2,11 @@
 
 Newest first. Older history is in the git log.
 
+## 1.23.0
+
+- Renamed to Nice Clipboard (repo roehrbacher/Nice-Clipboard, display name). Plugin id stays timon.clipboard, so history, settings and key bindings keep working.
+- README: short "TL;DR for humans" first, "Details for Agents" after it; Shortcuts moved after Flux.
+
 ## 1.22.0
 
 - Paste queue works with Super+V (Omarchy's universal paste) as well as Ctrl+V. While a queue runs, the stock Super+V bind is swapped for "paste next"; when the queue ends (done, Esc, a new pick, the watchdog) Super+V gets Omarchy's universal paste back (same behaviour: Shift+Insert in terminals, Ctrl+V elsewhere). A Hyprland config reload also restores it.
