@@ -265,6 +265,28 @@ Item {
     root.setKeepDays(list[i])
   }
 
+  // Feedback (1.24.0): opens a prefilled GitHub issue (label "feedback") in
+  // the browser; the plugin needs no token, GitHub uses the browser login.
+  readonly property string feedbackRepo: "roehrbacher/Nice-Clipboard"
+  property string feedbackNote: ""
+  function feedbackUrl(text) {
+    var t = String(text || "").trim()
+    var first = t.split("\n")[0]
+    var title = "Feedback: " + (first.length > 60 ? first.slice(0, 57) + "..." : first)
+    var body = t + "\n\n---\nSent from Nice Clipboard settings (1.24.0)"
+    return "https://github.com/" + root.feedbackRepo + "/issues/new?labels=feedback&title="
+      + encodeURIComponent(title) + "&body=" + encodeURIComponent(body)
+  }
+  function sendFeedback() {
+    var t = feedbackInput.text.trim()
+    if (t === "") { root.feedbackNote = "Write something first"; return false }
+    Quickshell.execDetached(["xdg-open", root.feedbackUrl(t)])
+    feedbackInput.text = ""
+    root.feedbackNote = "Opened in your browser: submit it there"
+    searchInput.forceActiveFocus()
+    return true
+  }
+
   function runInfoAction(name) {
     if (name === "incognito") root.setPrivate(!root.privateMode, false)
     else if (name === "clear") { root.infoOpen = false; root.requestClearHistory() }
@@ -1824,6 +1846,92 @@ Item {
                       hasCursor: root.infoActions[root.infoIndex] === "click" && root.clickAction === modelData.key
                       onClicked: { root.infoIndex = root.infoActions.indexOf("click"); root.setClickAction(modelData.key) }
                     }
+                  }
+                }
+
+                Text {
+                  text: "FEEDBACK"
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  topPadding: Style.space(10)
+                  bottomPadding: Style.space(4)
+                  leftPadding: Style.space(10)
+                }
+
+                // Same box style as the search field.
+                BorderSurface {
+                  id: feedbackBox
+                  objectName: "feedbackBox"
+                  x: Style.space(10)
+                  width: infoColumn.width - Style.space(20)
+                  height: Math.max(root.rowHeight * 2, feedbackInput.contentHeight + Style.space(8))
+                  color: searchBox.color
+                  borderSpec: searchBox.spec
+                  radius: searchBox.radius
+
+                  TextEdit {
+                    id: feedbackInput
+                    objectName: "feedbackInput"
+                    anchors.fill: parent
+                    anchors.margins: Style.spacing.controlPaddingX
+                    wrapMode: TextEdit.Wrap
+                    selectByMouse: true
+                    color: root.foreground
+                    selectionColor: root.selectedBackground
+                    selectedTextColor: root.selectedText
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    onTextChanged: if (text !== "") root.feedbackNote = ""
+                    // Ctrl+Enter sends, Esc leaves the field; other keys type.
+                    Keys.onPressed: function(event) {
+                      if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { root.sendFeedback(); event.accepted = true }
+                      else if (event.key === Qt.Key_Escape) { searchInput.forceActiveFocus(); event.accepted = true }
+                    }
+
+                    Text {
+                      anchors.fill: parent
+                      visible: feedbackInput.text === "" && !feedbackInput.activeFocus
+                      text: "Idea, bug or wish…"
+                      color: root.dimText
+                      font: feedbackInput.font
+                      wrapMode: Text.Wrap
+                    }
+                  }
+                }
+
+                Rectangle {
+                  objectName: "feedbackSend"
+                  width: infoColumn.width
+                  height: root.rowHeight
+                  radius: root.cornerRadius
+                  color: feedbackSendMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent"
+
+                  Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(10)
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "󰆈  Send feedback"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                  }
+                  Text {
+                    anchors.right: parent.right
+                    anchors.rightMargin: Style.space(10)
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.feedbackNote !== "" ? root.feedbackNote : "Ctrl+Enter · opens a GitHub issue"
+                    color: root.dimText
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+                  MouseArea {
+                    id: feedbackSendMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.sendFeedback()
                   }
                 }
 
