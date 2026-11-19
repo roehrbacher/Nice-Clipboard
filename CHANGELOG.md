@@ -2,6 +2,15 @@
 
 Newest first. Older history is in the git log.
 
+## 1.24.1
+
+- Clipboard reads time out: `wl-paste --list-types` and `wl-paste --type text` in capture.sh now have a 2-second timeout (image and HTML reads already did), so a stuck clipboard cannot hang the watcher. Ported from the Omarchy 4.5 fix that had only landed in the shared-config copy.
+- README paste-queue text now matches 1.22.0: notifications say Super+V, and Super+V as well as Ctrl+V advance the queue.
+
+## 1.24.0
+
+- Settings: a "Send feedback" box opens a prefilled GitHub issue (label `feedback`) in the browser. The plugin needs no token; GitHub uses the browser login. Includes `tst_feedback`.
+
 ## 1.23.0
 
 - Renamed to Nice Clipboard (repo roehrbacher/Nice-Clipboard, display name). Plugin id stays timon.clipboard, so history, settings and key bindings keep working.

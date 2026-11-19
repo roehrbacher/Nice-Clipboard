@@ -120,20 +120,23 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
 - **Paste queue:** Ctrl+click rows (or Ctrl+Space on the selected one); each
   gets a numbered badge in click order. The footer's Clear history button
   shows "Paste queue: N items in order"; closing the popup starts the queue. Esc clears the selection first.
-  Starting closes the popup and shows a notification "N items. Ctrl+V pastes
-  1 of N. Esc cancels.". Every Ctrl+V then pastes the next item and updates
-  the same notification ("Pasted 2 of 5 …"); after the last one it says
-  "Done". Esc cancels (and still reaches the window), so does the footer
+  Starting closes the popup and shows a notification titled "Paste queue ready:"
+  with body "Paste 1 of N. Esc cancels.". Every Super+V (or Ctrl+V) then pastes
+  the next item and updates the same notification ("Pasted 1 of 4. Super+V pastes
+  2 next. Esc cancels."); after the last one it says "Pasted N of N. Done.".
+  Esc cancels (and still reaches the window), so does the footer
   button "Pasting k of N · Cancel" when you open the popup again, and a
   queue ends by itself after 15 minutes without a paste.
-  How it works: while a queue runs, `queue.sh` binds Ctrl+V and Esc at
+  How it works: while a queue runs, `queue.sh` binds Super+V, Ctrl+V and Esc at
   runtime (`hyprctl eval 'hl.bind(...)'`, removed with `hl.unbind` when it
-  ends). Ctrl+V puts the next item on the clipboard and sends Shift+Insert,
-  the same way Alt+Shift+N and Omarchy's universal paste do. Only Ctrl+V
-  advances the queue (Ctrl+Shift+V in a terminal pastes the current item
-  without advancing). Detecting pastes from the clipboard itself
-  (`wl-copy --paste-once`) does not work here: every clipboard watcher
-  (this plugin, Flux) reads each copy and would use the paste up.
+  ends). Super+V or Ctrl+V puts the next item on the clipboard and sends
+  Shift+Insert, the same way Alt+Shift+N does. When the queue ends (done, Esc,
+  a new pick, the watchdog), Super+V gets Omarchy's universal paste back
+  (Shift+Insert in terminals, Ctrl+V elsewhere). A Hyprland config reload also
+  restores it. Only Super+V and Ctrl+V advance the queue (Ctrl+Shift+V in a
+  terminal pastes the current item without advancing). Detecting pastes from the
+  clipboard itself (`wl-copy --paste-once`) does not work here: every clipboard
+  watcher (this plugin, Flux) reads each copy and would use the paste up.
 - **Password managers:** copies marked `x-kde-passwordManagerHint` are never
   stored. Bitwarden desktop sets it on Linux for copied passwords (since
   2025, through arboard's `exclude_from_history`), as do KeePassXC and
