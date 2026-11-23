@@ -2,6 +2,20 @@
 
 Newest first. Older history is in the git log.
 
+## 1.34.1
+
+Fixes from an external review, each checked against the code and covered by a test.
+
+- A history.json that can't be read (cut off, edited by hand) used to load as empty, and the next copy saved over it, pins included. It is now renamed to `history.json.bad-<date-time>` and left as it was, a notification says so, and a new history starts. Images it names are kept. Nothing is saved before the file has been read, and a copy that arrives while it is still loading is added afterwards.
+- A screenshot copied in the moment between its image file being written and its entry being saved could be deleted by the image clean-up. Clean-up now leaves image files from the last minute alone, and copying an image again refreshes its file time.
+- A copy arriving while you dragged a row reset the drag, so the drop could save the wrong pin order. The list now waits for the drop, and the drop works on the current history.
+- A text copy followed right away by an image copy could be dropped as part of the image. Text is only skipped when the clipboard still offers the same text next to an image.
+- Paste as Markdown: under load, the converted text could still land in history as its own item. The skip marker now waits for the capture (still at most 15 s).
+- Paste queue: the plugin path is quoted in the runtime binds (a path with a space broke them), and the queue file is written atomically.
+- Markdown conversion: spaces and parentheses in link and image addresses are escaped.
+- The bar icon only checks Flux when incognito changes, not after every settings write.
+- A history test failed between midnight and 2 AM local time; it now uses a fixed clock.
+
 ## 1.34.0
 
 First public release.

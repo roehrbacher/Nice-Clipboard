@@ -13,7 +13,7 @@ check() { if [[ $2 == "$3" ]]; then echo "ok   $1"; else echo "FAIL $1: got '$2'
 
 out=$(printf '%s' '[{"type":"text","text":"one"},{"type":"text","text":"two"},{"type":"text","text":"three"}]' | "$here/queue.sh" start)
 check "start binds Ctrl+V" "$(grep -c 'hl.bind("CTRL + V"' <<<"$out")" 1
-check "start binds Super+V to next (1.22.0)" "$(grep -c 'hl.bind("SUPER + V", hl.dsp.exec_cmd("setsid -f .*queue.sh next")' <<<"$out")" 1
+check "start binds Super+V to next (1.22.0)" "$(grep -c "hl.bind(\"SUPER + V\", hl.dsp.exec_cmd(\"setsid -f '.*queue.sh' next\")" <<<"$out")" 1
 check "start swaps out the stock Super+V first" "$(grep -nE 'unbind\("SUPER \+ V"\)|bind\("SUPER \+ V", hl.dsp' <<<"$out" | head -1 | grep -c unbind)" 1
 check "start binds Esc" "$(grep -c 'hl.bind("Escape"' <<<"$out")" 1
 check "start notification (1.21.0 text)" "$(grep '^notify' <<<"$out")" "notify Paste queue ready:|Paste 1 of 3. Esc cancels."
@@ -74,4 +74,12 @@ check "daemonising wl-copy: no lock wait" "$(( $(date +%s) - s0 < 2 ))" 1
 "$here/queue.sh" next >/dev/null
 check "daemonising wl-copy: item 3 pasted" "$(cat "$tmp/clip")" third
 pkill -f 'sleep 20' 2>/dev/null
+# 1.34.1: a plugin path with a space still gives one working bind command
+# (the path is quoted), and a path with a quote is refused.
+mkdir -p "$tmp/my plugins"; cp "$here/queue.sh" "$tmp/my plugins/"
+out=$(printf '%s' '[{"type":"text","text":"one"}]' | "$tmp/my plugins/queue.sh" start)
+check "path with a space is quoted in the bind" "$(grep -c "exec_cmd(\"setsid -f '$tmp/my plugins/queue.sh' next\")" <<<"$out")" 2
+"$tmp/my plugins/queue.sh" cancel quiet >/dev/null
+mkdir -p "$tmp/it's"; cp "$here/queue.sh" "$tmp/it's/"
+check "path with a quote is refused" "$(printf '%s' '[{"type":"text","text":"one"}]' | "$tmp/it's/queue.sh" start 2>/dev/null; echo "rc=$?")" "rc=1"
 exit $fail

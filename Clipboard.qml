@@ -113,6 +113,8 @@ Item {
     // the clear-history question and an armed delete.
     root.disarmDelete()
     root.clearConfirmOpen = false
+    // A press never outlives the popup (rebuilds wait for its end).
+    if (root.dragRow >= 0) root.dragEnd()
     if (root.ocrDemoShown) { root.ocrDemoArg = ""; root.ocrDemoShown = false }
     if (ClipboardHistory.queueOnPick(root.queueKeys.length)) root.startQueue()
     else if (root.queueKeys.length) root.queueKeys = []
@@ -329,6 +331,7 @@ Item {
     root.selectedIndex = 0
     root.cursorActive = true
     root.disarmPointer()
+    if (root.dragRow >= 0) root.dragEnd()
     root.rebuildDisplay()
     if (root.fluxPresent && !root.fluxPaused && !statusProc.running) statusProc.running = true
     else if (!root.fluxPresent || root.fluxPaused) root.phoneOnline = false
@@ -384,7 +387,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.34.0"
+  readonly property string pluginVersion: "1.34.1"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -619,12 +622,39 @@ Item {
 
   // ---- history ----------------------------------------------------------
   function loadHistory(raw) {
-    var stamped = ClipboardHistory.stampMissing(ClipboardHistory.parseHistory(raw), Date.now())
+    var read = ClipboardHistory.readHistory(raw)
+    // Unreadable file (cut off, edited by hand): move it aside first and
+    // never save over it; see setAsideProc.
+    if (!read.ok) { root.setAsideHistory(); return }
+    var stamped = ClipboardHistory.stampMissing(read.history, Date.now())
     root.history = ClipboardHistory.pruneToLimit(stamped.history, root.historyLimit)
     root.historyLoaded = true
     if (!root.pruneOld() && stamped.changed) root.saveHistory()
     if (root.opened) root.rebuildDisplay(true)
     root.queueScans()
+    // Copies that arrived while the file was still being read.
+    var early = root.earlyEntries
+    root.earlyEntries = []
+    for (var i = 0; i < early.length; i++) root.storeEntry(early[i])
+  }
+
+  // history.json could not be read. clipboard.sh set-aside renames it to
+  // history.json.bad-<time> (its images are kept) and prints the new name;
+  // the popup starts with an empty history. If even the rename fails,
+  // nothing is saved at all until the file is fixed or removed.
+  property var earlyEntries: []
+  property bool historyBlocked: false
+  function setAsideHistory() {
+    if (!setAsideProc.running) setAsideProc.running = true
+  }
+  function historySetAside(name) {
+    if (name) {
+      root.notify("󰀦", "Clipboard history could not be read", "It was kept as " + name + " in ~/.local/share/timon.clipboard. A new history starts now.", 10000)
+    } else {
+      root.historyBlocked = true
+      root.notify("󰀦", "Clipboard history could not be read", "Nothing is saved until history.json in ~/.local/share/timon.clipboard is fixed or removed.", 10000)
+    }
+    root.loadHistory("[]")
   }
 
   // ---- text and QR codes in images --------------------------------
@@ -662,7 +692,7 @@ Item {
     if (!changed) return
     root.history = next
     root.saveHistory()
-    if (root.opened && root.dragRow < 0) root.rebuildDisplay(true)
+    if (root.opened) root.rebuildDisplay(true)
   }
   Timer {
     id: scanTimer
@@ -721,6 +751,8 @@ Item {
   }
 
   function saveHistory() {
+    // Never before the file was read (or set aside): that would overwrite it.
+    if (!root.historyLoaded || root.historyBlocked) return
     historyFile.setText(JSON.stringify(root.history) + "\n")
     // Image files of deleted items stay while Ctrl+Z can bring them back.
     if (!root.undoStack.some(function(u) { return u.entry && u.entry.type === "image" && u.kind !== "pin" })) pruneTimer.restart()
@@ -778,6 +810,7 @@ Item {
     root.storeEntry(entry)
   }
   function storeEntry(entry) {
+    if (!root.historyLoaded) { root.earlyEntries = root.earlyEntries.concat([entry]); return }
     root.currentClipKey = ClipboardHistory.clipKeyOf(entry, Qt.md5)
     entry.at = Date.now()  // copy time: day headings and auto-delete
     root.history = ClipboardHistory.pruneByAge(ClipboardHistory.addEntry(root.history, entry, root.historyLimit), root.keepDays, Date.now())
@@ -967,8 +1000,12 @@ Item {
   property bool dragOrigPinned: false
   property int dragOrigIndex: -1
   property string dragOrigSection: ""
+  // The history as it was when the press began. Rows keep their indexes
+  // into it while the list is not rebuilt (see rebuildPending).
+  property var dragHistory: []
   function dragStart(index) {
     var r = displayModel.get(index)
+    root.dragHistory = root.history
     root.dragRow = index
     root.dragHistoryIndex = r.historyIndex
     root.dragOrigPinned = r.pinned
@@ -1006,14 +1043,24 @@ Item {
     for (var i = 0; i < displayModel.count; i++) if (displayModel.get(i).slot !== i + 1) displayModel.setProperty(i, "slot", i + 1)
   }
 
+  // A press without a drop (no move, or cancelled before a move).
+  function dragEnd() {
+    root.dragRow = -1
+    root.dragMoved = false
+    root.dragHistoryIndex = -1
+    root.dragHistory = []
+    if (root.rebuildPending) root.rebuildDisplay(true)
+  }
+
   function dragFinish() {
     if (root.dragRow < 0) return
-    var moved = root.dragMoved
+    if (!root.dragMoved) { root.dragEnd(); return }
+    var before = root.dragHistory
     var historyIndex = displayModel.get(root.dragRow).historyIndex
     root.dragRow = -1
     root.dragMoved = false
     root.dragHistoryIndex = -1
-    if (!moved) return
+    root.dragHistory = []
     var nowPinned = false
     var order = []
     for (var i = 0; i < displayModel.count; i++) {
@@ -1021,6 +1068,11 @@ Item {
       if (r.historyIndex === historyIndex) nowPinned = r.pinned
       if (r.pinned) order.push(r.historyIndex)
     }
+    // A copy (or auto-delete, Flux, a scan) may have changed the history
+    // during the drag: the rows still point into the old one.
+    historyIndex = ClipboardHistory.remapIndexes(before, root.history, [historyIndex])[0]
+    order = ClipboardHistory.remapIndexes(before, root.history, order).filter(function(n) { return n >= 0 })
+    if (historyIndex < 0) { root.rebuildDisplay(true); return }
     var next = root.history
     // Pinned or unpinned by the drag: flip it first, then apply the order.
     // Ctrl+Z takes the pin change back like the pin button's.
@@ -1047,7 +1099,31 @@ Item {
   // reselectHistoryIndex names it in the new history instead). revealMoved:
   // after keeping the scroll, bring the cursor row into view if needed.
   property int reselectHistoryIndex: -1
+  // Not while a row is dragged: the model is the drag's state (moved rows,
+  // flipped pins); dragFinish rebuilds after the drop. A row that is only
+  // pressed is rebuilt as usual and the press follows its entry.
+  property bool rebuildPending: false
   function rebuildDisplay(keepScroll, movedHistoryIndex, revealMoved) {
+    if (root.dragRow >= 0 && root.dragMoved) { root.rebuildPending = true; return }
+    root.rebuildPending = false
+    root.rebuildRows(keepScroll, movedHistoryIndex, revealMoved)
+    if (root.dragRow >= 0) root.dragFollowRebuild()
+  }
+  // The pressed entry's new row; gone (deleted, aged out) = no drag.
+  function dragFollowRebuild() {
+    var n = ClipboardHistory.remapIndexes(root.dragHistory, root.history, [root.dragHistoryIndex])[0]
+    var at = -1
+    for (var i = 0; n >= 0 && i < displayModel.count; i++) if (displayModel.get(i).historyIndex === n) { at = i; break }
+    if (at < 0) { root.dragRow = -1; root.dragHistoryIndex = -1; root.dragHistory = []; return }
+    var r = displayModel.get(at)
+    root.dragRow = at
+    root.dragOrigIndex = at
+    root.dragOrigPinned = r.pinned
+    root.dragOrigSection = r.sectionName
+    root.dragHistoryIndex = n
+    root.dragHistory = root.history
+  }
+  function rebuildRows(keepScroll, movedHistoryIndex, revealMoved) {
     var rows = ClipboardHistory.displayRows(root.history, root.filterText, root.displayLimit)
     // Undo: the history already changed, so the moved entry is known by its
     // row identity (the same before and after; history indexes shift).
@@ -1674,7 +1750,19 @@ Item {
     atomicWrites: true
     printErrors: false
     onLoaded: root.loadHistory(text())
-    onLoadFailed: root.loadHistory("[]")
+    onLoadFailed: function(error) {
+      if (error === FileViewError.FileNotFound) root.loadHistory("[]")
+      else root.setAsideHistory()
+    }
+  }
+
+  Process {
+    id: setAsideProc
+    command: [root.helper, "set-aside"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.historySetAside(String(text).trim())
+    }
   }
 
   // Auto-delete also runs hourly while the shell is up.
@@ -3247,7 +3335,7 @@ Item {
                       resultList.interactive = true
                       dropped = root.dragMoved
                       if (root.dragMoved) root.dragFinish()
-                      else { root.dragRow = -1; root.dragHistoryIndex = -1 }
+                      else root.dragEnd()
                     }
                     onCanceled: {
                       resultList.interactive = true

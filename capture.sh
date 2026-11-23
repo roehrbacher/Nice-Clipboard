@@ -62,7 +62,10 @@ emit_image() {
   hash=$(sha256sum "$tmp" | awk '{print $1}')
   file="$IMAGE_DIR/$hash.$ext"
   if [[ -e $file ]]; then
+    # Copied again: fresh mtime, so `clipboard.sh prune` (which spares files
+    # from the last minute) can't delete it before the entry is saved.
     rm -f "$tmp"
+    touch "$file"
   else
     mv "$tmp" "$file"
   fi
@@ -169,8 +172,23 @@ skip_own_paste() {
   emit_text <"$tmp"; rm -f "$tmp"; return 0
 }
 
+# The type list above was read after this copy woke us, so it may already
+# belong to a newer copy (text, then an image right after). Only drop the
+# text when the clipboard still offers this same text next to the image.
+text_with_image() {
+  local tmp now
+  tmp=$(mktemp --tmpdir="$DATA_DIR" text.XXXXXX) || { drain; return 0; }
+  head -c $((MAX_TEXT_BYTES + 1)) >"$tmp"
+  drain
+  now=$(timeout 2s wl-paste --type text --no-newline 2>/dev/null | sha256sum | awk '{print $1}')
+  if [[ $now == "$(sha256sum <"$tmp" | awk '{print $1}')" ]]; then rm -f "$tmp"; return 0; fi
+  types=""  # the HTML on the clipboard now belongs to the newer copy
+  skip_own_paste <"$tmp" || emit_text <"$tmp"
+  rm -f "$tmp"
+}
+
 case "${1:-}" in
-text) if has_image; then drain; elif skip_own_paste; then :; else emit_text; fi; exit 0 ;;
+text) if has_image; then text_with_image; elif skip_own_paste; then :; else emit_text; fi; exit 0 ;;
 image/*) emit_image "$1"; exit 0 ;;
 esac
 

@@ -17,7 +17,8 @@
 #                                         (the local clipboard is not touched)
 #   clipboard.sh open <index>             open a URL in the browser, text in the editor, an image in the editor
 #   clipboard.sh clear                    empty the live clipboard
-#   clipboard.sh prune                    delete stored images no entry points to
+#   clipboard.sh prune                    delete stored images no entry points to (older than a minute)
+#   clipboard.sh set-aside                rename an unreadable history.json to history.json.bad-<time>
 #   clipboard.sh wipe                     resume Flux if we paused it, delete all stored history (used by uninstall)
 
 set -uo pipefail
@@ -177,7 +178,8 @@ markdown | paste-md)
   if [[ $(wl-paste --no-newline --type text 2>/dev/null | sha256sum | awk '{print $1}') == "$(printf '%s' "$md" | sha256sum | awk '{print $1}')" ]]; then
     copy_entry "$2" || true
   fi
-  rm -f "$DATA_DIR/skip-next"
+  # skip-next stays: capture.sh uses it up when it sees the Markdown copy
+  # (that can be later than this under load) and ignores it after 15 s.
   ;;
 copy-slot)
   # Slot 1…10 (key 0 = 10): pinned entries first (history order),
@@ -246,10 +248,26 @@ clear)
 prune)
   [[ -r $HISTORY && -d $IMAGE_DIR ]] || exit 0
   keep=$(jq -r '.[] | select(.type == "image") | .path' "$HISTORY" 2>/dev/null) || exit 0
+  # capture.sh writes (or touches) the image file before the popup saves
+  # its entry, so files from the last minute are never orphans yet. Images
+  # named in a set-aside history.json.bad-* stay too.
+  now=$(date +%s)
   for f in "$IMAGE_DIR"/*; do
     [[ -f $f ]] || continue
-    grep -qxF "$f" <<<"$keep" || rm -f "$f"
+    grep -qxF "$f" <<<"$keep" && continue
+    (( now - $(stat -c %Y "$f" 2>/dev/null || echo "$now") < 60 )) && continue
+    grep -qsF "$f" "$DATA_DIR"/history.json.bad-* && continue
+    rm -f "$f"
   done
+  ;;
+set-aside)
+  # history.json can't be read: keep it as history.json.bad-<time> instead
+  # of letting the next save overwrite it. Prints the new name.
+  [[ -e $HISTORY ]] || exit 1
+  bad="history.json.bad-$(date +%Y%m%d-%H%M%S)"
+  [[ -e $DATA_DIR/$bad ]] && bad="$bad-$$"
+  mv -n "$HISTORY" "$DATA_DIR/$bad" && [[ ! -e $HISTORY ]] || exit 1
+  echo "$bad"
   ;;
 wipe)
   # Never leave Flux paused behind when the plugin goes away.

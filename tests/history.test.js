@@ -448,6 +448,9 @@ console.log("headings: ok")
 
 // 1.16.0: search filters, OCR/QR actions
 {const H=require('../ClipboardHistory.js'),a=require('assert')
+// Fixed clock at 12:00 local: "today" vs "<2h" needs an entry that is
+// today and older than 2 h, which does not exist between 00:00 and 02:00.
+const realNow=Date.now,noon=new Date();noon.setHours(12,0,0,0);Date.now=()=>noon.getTime()
 const now=Date.now()
 const h=[{type:"text",text:"https://x.com/a",at:now-1000,app:"chromium"},{type:"text",text:"#ff0000",at:now-3*3600e3},{type:"text",text:"hello",pinned:true,at:now-2*86400e3,app:"kitty"},
 {type:"image",path:"/a.png",screenshot:true,at:now,ocr:"Rechnung Betrag 42",scanned:true},{type:"image",path:"/b.png",at:now,qr:"WIFI:T:WPA;S:Home;P:se\\;cret;;",scanned:true}]
@@ -460,6 +463,7 @@ const u=H.imageTextActions({type:"image",path:"/c",qr:"https://example.com/x",oc
 a.strictEqual(H.imageTextActions({type:"image",path:"/c",qr:"info@example.com"}).link.target,"mailto:info@example.com")
 a.strictEqual(H.imageTextActions({type:"image",path:"/c",qr:"BEGIN:VCARD"}).copyTip,"Copy QR code text")
 const re=H.addEntry(H.parseHistory(JSON.stringify(h)),{type:"image",path:"/a.png"},100);a.strictEqual(re[0].ocr,"Rechnung Betrag 42")
+Date.now=realNow
 console.log("filters/ocr: ok")}
 
 // ---- 1.17.0: Markdown paste, paste queue --------------------------------
@@ -836,4 +840,17 @@ console.log("filters/ocr: ok")}
   r = H.restoreEntry([{ type: "text", text: "x" }], H.pushUndo([], h0[2], 0)[0])
   assert.deepStrictEqual(r.history.map(e => e.text), ["b", "x"], "delete undo unchanged")
   console.log("1.33.4: ok")
+}
+
+// ---- 1.34.1: unreadable history file, history changes during a drag ----
+{
+  const H = require('../ClipboardHistory.js'), a = require('assert')
+  a.strictEqual(H.readHistory('[{"type":"text","text":"a"}').ok, false, "cut-off file is not ok")
+  a.strictEqual(H.readHistory('{"type":"text"}').ok, false, "not an array is not ok")
+  a.deepStrictEqual(H.readHistory(""), { ok: true, history: [] }, "empty file is an empty history")
+  a.deepStrictEqual(H.readHistory('[{"type":"text","text":"a"}]').history, [{ type: "text", text: "a" }])
+  const before = [{ type: "text", text: "p1", pinned: true }, { type: "text", text: "p2", pinned: true }, { type: "image", path: "/i.png" }]
+  const after = [{ type: "text", text: "new" }].concat(before.slice(0, 2))
+  a.deepStrictEqual(H.remapIndexes(before, after, [0, 1, 2]), [1, 2, -1], "same entries, new indexes; gone = -1")
+  console.log("1.34.1: ok")
 }

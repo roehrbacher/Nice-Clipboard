@@ -13,6 +13,7 @@ BarWidget {
 
   property bool privateMode: false
   property bool fluxPaused: false
+  property bool fluxChecked: false
   readonly property string statePath: (Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share")) + "/timon.clipboard/state.json"
   readonly property string pluginDir: decodeURIComponent(String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "")).replace(/\/$/, "")
 
@@ -24,7 +25,12 @@ BarWidget {
     watchChanges: true
     printErrors: false
     onLoaded: {
+      var was = root.privateMode
       try { root.privateMode = JSON.parse(text()).private === true } catch (e) { root.privateMode = false }
+      // state.json also changes for settings and the update check; only
+      // an incognito switch (or the first read) changes Flux.
+      if (root.fluxChecked && was === root.privateMode) return
+      root.fluxChecked = true
       fluxCheck.left = 3
       fluxCheck.restart()
     }

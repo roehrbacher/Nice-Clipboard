@@ -16,6 +16,9 @@
 #   v1334.qml 1.33.4: unpin goes on top of History (clipboard untouched),
 #             Ctrl+Z for pin/unpin, Clear only empties a cleared clipboard,
 #             Top button PNGs (tests/topbutton.test.sh)
+#   v1341.qml 1.34.1: a cut-off history.json is set aside, never saved
+#             over; copies before the load are kept; a copy during a pin
+#             drag keeps the dragged order (tests/v1341.test.sh)
 #   v134.qml  1.34.0: update check on by default (also for pre-1.34 state),
 #             a choice in Settings is kept; one check a day on open
 #   v1335.qml 1.33.5: pin / unpin / delete and their Ctrl+Z: every frame shows
@@ -31,9 +34,9 @@
 # notifiers, xdg-open and the terminal launcher are stubs that only log;
 # feedback goes to a local fake Worker; temp data dir, no watchers, hard
 # timeout. Nothing is installed, removed, sent or pasted.
-#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335|v134 [png dir]
+#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335|v134|v1341 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335|v134 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335|v134|v1341 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."
@@ -61,7 +64,11 @@ printf '#!/bin/bash\necho "$*" >> "%s/fluxpause"\ncase $1 in pause) echo paused;
 printf '#!/bin/bash\necho "$*" >> "%s/systemctl"\nexit 0\n' "$tmp" > "$tmp/bin/systemctl"
 # Never GitHub from tests: the update check is a stub that logs.
 printf '#!/bin/bash\necho call >> "%s/updatecheck"\necho '"'"'{"latest":"99.0.0","git":false}'"'"'\n' "$tmp" > "$tmp/clip/update-check.sh"
-printf '#!/bin/bash\necho "$*" >> "%s/helper"\n[[ $1 == current ]] && echo empty\nexit 0\n' "$tmp" > "$tmp/clip/clipboard.sh"; chmod +x "$tmp/clip/"*.sh
+# set-aside (an unreadable history.json) runs the real helper on the temp data dir.
+mv "$tmp/clip/clipboard.sh" "$tmp/clip/clipboard-real.sh"
+printf '#!/bin/bash\necho "$*" >> "%s/helper"\n[[ $1 == current ]] && echo empty\n[[ $1 == set-aside ]] && exec "$(dirname "$0")/clipboard-real.sh" set-aside\nexit 0\n' "$tmp" > "$tmp/clip/clipboard.sh"; chmod +x "$tmp/clip/"*.sh
+# A scenario may start from a given history.json (v1341: a cut-off file).
+[[ -f $here/$name.history ]] && cp "$here/$name.history" "$tmp/data/timon.clipboard/history.json"
 printf '#!/bin/bash\n[[ $1 == status ]] && echo '"'"'{"running":true,"devices":[]}'"'"'\nexit 0\n' > "$tmp/bin/flux-cli"
 printf '#!/bin/bash\necho "uwsm-app: $*" >> "%s/install"\n' "$tmp" > "$tmp/bin/uwsm-app"
 printf '#!/bin/bash\necho "SUDO MUST NOT RUN" >> "%s/install"; exit 1\n' "$tmp" > "$tmp/bin/sudo"
@@ -105,4 +112,7 @@ echo "$tag terminal launches: $(sed "s#$tmp#TMP#g" "$tmp/install" 2>/dev/null | 
 echo "$tag flux-pause.sh calls: $(tr "\n" ";" 2>/dev/null < "$tmp/fluxpause") systemctl calls: $(tr "\n" ";" 2>/dev/null < "$tmp/systemctl")"
 echo "$tag xdg-open calls: $(tr "\n" ";" 2>/dev/null < "$tmp/xdgopen")"
 echo "$tag state.json: $(cat "$tmp/data/timon.clipboard/state.json" 2>/dev/null)"
+echo "$tag history.json: $(cat "$tmp/data/timon.clipboard/history.json" 2>/dev/null)"
+for f in "$tmp"/data/timon.clipboard/history.json.bad-*; do [[ -e $f ]] && echo "$tag set aside $(basename "$f"): $(cat "$f")"; done
+echo "$tag notifications: $(tr "\n" ";" 2>/dev/null < "$tmp/notify")"
 if [[ -n ${1:-} ]]; then mkdir -p "$1"; cp "$tmp"/png/*.png "$1"/ 2>/dev/null; echo "$tag PNGs: $(cd "$1" && command ls *.png 2>/dev/null | tr "\n" " ")"; fi

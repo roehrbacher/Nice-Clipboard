@@ -19,6 +19,11 @@ def esc(text):
     return re.sub(r"([\\`*_\[\]])", r"\\\1", text)
 
 
+def url(target):
+    # A link or image target: spaces and parentheses would end it early.
+    return target.replace(" ", "%20").replace("(", "%28").replace(")", "%29")
+
+
 class Md(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -143,7 +148,7 @@ class Md(HTMLParser):
         elif tag == "img":
             src = a.get("src") or ""
             if src and not src.startswith("data:"):
-                self.emit("![%s](%s)" % (esc(a.get("alt") or ""), src))
+                self.emit("![%s](%s)" % (esc(a.get("alt") or ""), url(src)))
         elif tag == "table":
             self.flush()
             self.table = []
@@ -185,7 +190,7 @@ class Md(HTMLParser):
         elif tag == "a":
             href = self.links.pop() if self.links else ""
             if href and not href.startswith("javascript:"):
-                self.emit("](%s)" % href.replace(" ", "%20").replace(")", "%29"))
+                self.emit("](%s)" % url(href))
         elif tag in ("td", "th") and self.table is not None and self.cell is not None:
             self.flush()
             cell = " ".join("".join(self.cell).split()).replace("|", "\\|")

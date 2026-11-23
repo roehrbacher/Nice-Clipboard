@@ -54,18 +54,39 @@ function entryKey(entry) {
 }
 
 function parseHistory(raw) {
-  try {
-    var parsed = JSON.parse(String(raw || "[]"))
-    var next = []
-    if (!Array.isArray(parsed)) return next
-    for (var i = 0; i < parsed.length; i++) {
-      var entry = normalizeEntry(parsed[i])
-      if (entry) next.push(entry)
-    }
-    return next
-  } catch (e) {
-    return []
+  return readHistory(raw).history
+}
+
+// { ok, history }. ok is false when the file is not a JSON array (cut off,
+// edited by hand, a disk error): the caller must not save over it. An empty
+// file counts as an empty history.
+function readHistory(raw) {
+  var text = String(raw === undefined || raw === null ? "" : raw)
+  if (!/\S/.test(text)) return { ok: true, history: [] }
+  var parsed
+  try { parsed = JSON.parse(text) } catch (e) { return { ok: false, history: [] } }
+  if (!Array.isArray(parsed)) return { ok: false, history: [] }
+  var next = []
+  for (var i = 0; i < parsed.length; i++) {
+    var entry = normalizeEntry(parsed[i])
+    if (entry) next.push(entry)
   }
+  return { ok: true, history: next }
+}
+
+// Indexes into `before` → the same entries' indexes in `after` (-1 when
+// the entry is gone). Used when the history changed during a drag.
+function remapIndexes(before, after, indexes) {
+  var at = {}
+  var values = Array.isArray(after) ? after : []
+  for (var i = 0; i < values.length; i++) at[entryKey(values[i])] = i
+  var old = Array.isArray(before) ? before : []
+  return (indexes || []).map(function(n) {
+    var e = old[n]
+    if (!e) return -1
+    var k = entryKey(e)
+    return Object.prototype.hasOwnProperty.call(at, k) ? at[k] : -1
+  })
 }
 
 function limitOf(limit, fallback) {
@@ -1507,6 +1528,8 @@ if (typeof module !== "undefined") {
     normalizeEntry: normalizeEntry,
     entryKey: entryKey,
     parseHistory: parseHistory,
+    readHistory: readHistory,
+    remapIndexes: remapIndexes,
     addEntry: addEntry,
     pruneToLimit: pruneToLimit,
     removeEntryAt: removeEntryAt,

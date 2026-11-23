@@ -47,6 +47,8 @@ MD
 check "converted to Markdown (bundled html2md.py)" "$("$here/clipboard.sh" markdown 0)" "$want"
 echo '[{"type":"text","text":"just text"}]' >"$tmp/data/timon.clipboard/history.json"
 check "no html: falls back to the text" "$("$here/clipboard.sh" markdown 0)" "just text"
+# 1.34.1: spaces and parentheses in an image or link target are escaped.
+check "image/link targets with spaces and ( ) stay one target" "$(echo '<p><img src="https://e.x/a b(1).png" alt="pic"> <a href="https://e.x/w_(x)">l</a></p>' | python3 "$here/html2md.py")" '![pic](https://e.x/a%20b%281%29.png) [l](https://e.x/w_%28x%29)'
 # 1.18.0: the pasted Markdown is not captured; the entry is restored after.
 D="$tmp/data/timon.clipboard"
 printf '%s' '# Hi' | sha256sum | awk '{print $1}' >"$D/skip-next"
@@ -71,5 +73,8 @@ jq -c '[.]' <<<"$out" >"$D/history.json"
 "$here/clipboard.sh" paste-md 0
 check "paste-md: Markdown copied, pasted, then the entry restored" "$(tr '\n' ' ' <"$tmp/log")" "copy paste copy "
 check "paste-md: clipboard holds the original text again" "$(cat "$tmp/board")" "Plan Read the doc"
-check "paste-md: marker cleaned up" "$([[ -e $D/skip-next ]] && echo left || echo gone)" gone
+# 1.34.1: the marker waits for capture.sh (late under load), not 1 s.
+md=$("$here/clipboard.sh" markdown 0)
+check "paste-md: a late capture of the Markdown is still dropped" "$(printf '%s' "$md" | "$here/capture.sh" text)" ""
+check "paste-md: marker used up by that capture" "$([[ -e $D/skip-next ]] && echo left || echo gone)" gone
 exit $fail

@@ -69,6 +69,8 @@ bash tests/slots.test.sh
 bash tests/topbutton.test.sh
 bash tests/uninstall.test.sh
 bash tests/update-check.test.sh
+bash tests/v1341.test.sh
+bash tests/barflux.test.sh
 
 bash tests/geometry/run-harness.sh v129
 bash tests/geometry/run-harness.sh v130

@@ -32,6 +32,9 @@ Q="$DATA_DIR/queue.json"
 LOCK="$DATA_DIR/queue.lock"
 IDLE=${QUEUE_IDLE:-900}
 me=$(readlink -f "$0")
+# $me goes into a Lua string and a shell command (bind_keys): quoted there,
+# so a path with a quote or backslash is refused, like global-keys.sh.
+[[ $me == *[\'\"\\]* ]] && { echo "queue.sh: plugin path contains a quote or backslash" >&2; exit 1; }
 mkdir -p "$DATA_DIR"
 
 hypr() {
@@ -54,10 +57,10 @@ notify() {
 # Shift+Insert, else Ctrl+V, sent as key state with explicit mods).
 UNIVERSAL_PASTE='hl.bind("SUPER + V", function() local w = hl.get_active_window(); local term = false; if w then for _, t in ipairs(w.tags or {}) do if t:gsub("%*$", "") == "terminal" then term = true end end end; local m = term and "SHIFT" or "CTRL"; local k = term and "Insert" or "V"; hl.dispatch(hl.dsp.send_key_state({ mods = m, key = k, state = "down" })); hl.timer(function() hl.dispatch(hl.dsp.send_key_state({ mods = m, key = k, state = "up" })) end, { timeout = 50, type = "oneshot" }) end, { description = "Universal paste" })'
 bind_keys() {
-  hypr eval "hl.bind(\"CTRL + V\", hl.dsp.exec_cmd(\"setsid -f $me next\"), { description = \"Clipboard paste queue: next\" })"
+  hypr eval "hl.bind(\"CTRL + V\", hl.dsp.exec_cmd(\"setsid -f '$me' next\"), { description = \"Clipboard paste queue: next\" })"
   hypr eval 'hl.unbind("SUPER + V")'
-  hypr eval "hl.bind(\"SUPER + V\", hl.dsp.exec_cmd(\"setsid -f $me next\"), { description = \"Clipboard paste queue: next\" })"
-  hypr eval "hl.bind(\"Escape\", hl.dsp.exec_cmd(\"setsid -f $me cancel esc\"), { description = \"Clipboard paste queue: cancel\" })"
+  hypr eval "hl.bind(\"SUPER + V\", hl.dsp.exec_cmd(\"setsid -f '$me' next\"), { description = \"Clipboard paste queue: next\" })"
+  hypr eval "hl.bind(\"Escape\", hl.dsp.exec_cmd(\"setsid -f '$me' cancel esc\"), { description = \"Clipboard paste queue: cancel\" })"
 }
 unbind_keys() {
   hypr eval 'hl.unbind("CTRL + V")'
@@ -94,7 +97,7 @@ start)
   items=$(jq -c '[.[] | select(type == "object" and ((.type == "text" and (.text | type == "string") and (.text | length > 0)) or (.type == "image" and (.path | type == "string"))))]' 2>/dev/null) || exit 1
   n=$(jq 'length' <<<"$items")
   [[ $n -gt 0 ]] || { rm -f "$Q"; exit 1; }
-  jq -n --argjson items "$items" --arg id "$$-$(date +%s%N)" '{items: $items, pos: 0, id: $id}' >"$Q" || exit 1
+  jq -n --argjson items "$items" --arg id "$$-$(date +%s%N)" '{items: $items, pos: 0, id: $id}' >"$Q.tmp" && mv "$Q.tmp" "$Q" || exit 1
   bind_keys
   notify "Paste 1 of $n. Esc cancels." 10000 "Paste queue ready:"
   [[ ${QUEUE_DRY:-0} == 1 ]] || setsid -f "$me" watchdog "$(jq -r .id "$Q")" </dev/null >/dev/null 2>&1 9>&-
