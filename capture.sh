@@ -77,7 +77,7 @@ emit_image() {
     '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at, bytes:$bytes, screenshot:$screenshot} + (if $app != "" then {app:$app} else {} end)'
 }
 
-# 1.17.0: a browser / office copy also offers text/html. Keep it (up to
+# A browser / office copy also offers text/html. Keep it (up to
 # 256 KiB, only when it has real formatting: headings, links, lists, bold,
 # italic, code, tables) so "Paste as Markdown" can convert it later. Written
 # to a user-only temp file for perl, never to argv or the environment.
@@ -155,7 +155,7 @@ emit_text() {
 # a URL) wakes both watchers; keep only the image, not a separate link entry.
 has_image() { grep -q '^image/' <<<"$types"; }
 
-# 1.18.0: "Paste as Markdown" puts the converted text on the clipboard only
+# "Paste as Markdown" puts the converted text on the clipboard only
 # to paste it; clipboard.sh leaves its hash in skip-next (valid 15 s). That
 # one copy is dropped; any other copy is captured as usual.
 SKIP_FILE="$DATA_DIR/skip-next"

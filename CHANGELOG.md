@@ -2,19 +2,28 @@
 
 Newest first. Older history is in the git log.
 
+## 1.32.1
+
+Code quality pass.
+
+- Fix: a copy that arrived while you edited an item rebuilt the list and threw away the edit. The draft now survives the rebuild.
+- About 130 version-history notes ("1.29.0: ...", "was ... before") are gone from code comments. The CHANGELOG keeps the history.
+- Removed a leftover hover area on the OCR language rows.
+- Tests check behaviour: no test for a removed function any more, and the undo limit is checked against the number 10, not the constant.
+
 ## 1.32.0
 
-- Edit an item: a pencil button on text rows (no right-click menu) turns the row into a text field with the whole text; the row grows to fit (then scrolls). Enter or the check button saves into the same item (pin, place and copy time stay), Shift+Enter adds a line, Esc cancels. Empty or unchanged text is not saved; if the new text equals another unpinned item, that one is merged away.
-- Popup header like the stock Wi-Fi / Bluetooth / Display popups, with their components: `PanelHero` (clipboard icon top left at `Style.font.display`, "Clipboard" at `Style.font.title` bold, a caps line `4 items · 1 pinned` or "Incognito · nothing is saved") and a `PanelSeparator` 14 px below, as in the Bluetooth panel. The search field takes the title's place while searching; the search button and the incognito badge sit on the right.
-- Settings layout: page content is flush with the page heading and divider (it was indented 10 px, and rows had 10 px inner margins). Help texts under controls use `Style.font.bodySmall` (was `caption`, one size smaller), the same size as the page description and the vanilla dev gallery's header description.
-- Switches: Incognito (General), Check for updates (General) and System-wide shortcuts (Shortcuts) are rows with a stock `ToggleSwitch` on the right, a label and a one-line hint; only the switch is clickable.
-- General: Incognito's hint says Flux pauses too. "When you left-click an item" with three stacked options: Copy only, Copy, paste and close (default, also for new installs), Copy, paste and keep open (new: the popup closes for the paste, then opens again with the same search and the item selected); a sentence under them explains the chosen one. Saved values (`copy`, `paste`) keep their meaning.
-- History: Clear history happens in the settings window (the popup no longer opens): the button says how many unpinned items go ("Clear history: delete 3 items (pins stay)"), the first click turns it red with a check, the second deletes; it resets after 3 s or when the mouse leaves.
-- Phone (Flux) (was "Flux (phone)"): says what Nice Clipboard adds to Flux and that incognito pauses the whole phone link. "Send current clipboard" is a stock button.
-- Fix: text sent from the phone while incognito was on arrived when incognito was turned off. Incognito stops fluxd; the phone keeps what it sent and delivers it as soon as Flux is back. After incognito ends, until 5 s after the phone is online again (at most 10 min), new text waits for `flux-cli status`: from the phone, it is not saved and the clipboard is cleared. Flux itself is unchanged.
-- Shortcuts: "Alt+Shift+1–0" (was "1…9, 0"), also in the shortcut summary and README. "Global shortcuts" is "System-wide shortcuts".
-- Shorter settings texts (page descriptions, hints).
-- Tests: `run-harness.sh v132`; the harness stubs `flux-pause.sh` and `systemctl`, so a test that toggles incognito can never stop the real fluxd. `history.test.js` covers editing, the click options, the clear label, the header line and the quarantine window.
+- Edit an item. Text rows get a pencil button. It turns the row into a text field with the whole text, and the row grows to fit. Enter or the check button saves into the same item, so its pin, place and copy time stay. Shift+Enter adds a line, Esc cancels. Empty or unchanged text is not saved.
+- The popup header uses the stock `PanelHero` and `PanelSeparator`, like the Wi-Fi, Bluetooth and Display popups. It shows the clipboard icon, "Clipboard" in the title size, and a caps line such as `4 items · 1 pinned`. While you search, the search field takes the title's place.
+- Settings content lines up with the page heading. Help texts use `Style.font.bodySmall`, the size of the page description and of the dev gallery header description. They used `caption`, one size smaller.
+- Incognito, Check for updates and System-wide shortcuts use the stock `ToggleSwitch` with a label and a one-line hint. Only the switch reacts to clicks.
+- General: the Incognito hint says that Flux pauses too. "When you left-click an item" has three options: Copy only, Copy, paste and close (the default), and Copy, paste and keep open. The last one closes the popup for the paste and opens it again with the same search. A sentence under the options explains the chosen one. Saved settings keep their meaning.
+- History: Clear history works inside the settings window. The button counts the unpinned items, turns red with a check on the first click and deletes on the second.
+- "Flux (phone)" is now "Phone (Flux)". The page says what Nice Clipboard adds to Flux.
+- Fix: text sent from the phone during incognito arrived when incognito ended. Incognito stops fluxd, and the phone delivers its queue when Flux is back. Now, after incognito ends, new text waits for `flux-cli status` until 5 s after the phone is online again, at most 10 minutes. Text from the phone is dropped and the clipboard is cleared. Flux itself is unchanged.
+- Shortcuts read "Alt+Shift+1–0". "Global shortcuts" is now "System-wide shortcuts".
+- Shorter settings texts.
+- Tests: `run-harness.sh v132`. The harness stubs `flux-pause.sh` and `systemctl`, so no test can stop the real fluxd.
 
 ## 1.31.1
 

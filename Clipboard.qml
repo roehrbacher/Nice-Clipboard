@@ -17,7 +17,7 @@ import "Bridge.js" as Bridge
 Item {
   id: root
 
-  // 1.25.0: section heading for the settings view, built from the stock
+  // Section heading for the settings view, built from the stock
   // Display panel's own pieces (qs.Ui PanelSeparator: 1px, foreground at
   // 12%; PanelSectionHeader: caption, bold, foreground darkened 1.4x) with
   // the same gaps (14 px around the rule, 6 px from header to content).
@@ -26,7 +26,7 @@ Item {
   // (1, 2, 5, 10 or 20, picked in settings, saved in state.json). Pinned
   // entries are never deleted. historyLimit is only a safety cap.
   property int keepDays: ClipboardHistory.DEFAULT_KEEP_DAYS
-  // 1.18.0 setting: what a left click on a row does ("paste" = select,
+  // Setting: what a left click on a row does ("paste" = select,
   // paste and close; "copy" = only put it on the clipboard, popup stays).
   property string clickAction: "paste"
   // After a copy-only click the entry moves to the top; keep it selected.
@@ -54,7 +54,7 @@ Item {
   // flux-pause.sh's last answer: absent, running, paused or off.
   property string fluxState: ""
   // Footer phone button: "online", "nophone", "paused", "off" or "" (hidden).
-  // 1.26.0: Clear history counts (and deletes) unpinned items only.
+  // Clear history counts (and deletes) unpinned items only.
   readonly property int unpinnedCount: ClipboardHistory.unpinnedCount(root.history)
   readonly property int pinnedCount: ClipboardHistory.pinnedCount(root.history)
   readonly property string phoneIcon: ClipboardHistory.phoneIconState(root.fluxState, root.phoneOnline)
@@ -92,7 +92,7 @@ Item {
   readonly property string queueScript: pluginDir + "/queue.sh"
   readonly property string queuePath: dataDir + "/queue.json"
 
-  // ---- paste queue (1.17.0) ------------------------------------------------
+  // ---- paste queue ------------------------------------------------
   // Ctrl+click (or Ctrl+Space) rows: they get 1, 2, 3 badges in click order.
   // "Paste N in order" (footer button or Ctrl+Enter) hands them to queue.sh,
   // closes the popup, and every Super+V / Ctrl+V then pastes the next one. Keys are
@@ -101,7 +101,7 @@ Item {
   property var queueKeys: []
   // The armed queue (queue.json): { pos, count } or null.
   property var queueRunning: null
-  // 1.19.0: no start button. 2+ selected rows start the queue as soon as
+  // No start button. 2+ selected rows start the queue as soon as
   // the popup closes (any way except Esc, which clears the selection first);
   // a single Ctrl-selected row is just a normal pick.
   onOpenedChanged: {
@@ -112,20 +112,20 @@ Item {
   }
   // Keys (history entry keys) of the running queue, for the badges.
   property var runningKeys: []
-  // 1.19.0: what is on the system clipboard ("text:<md5>" / "image:<sha256>"),
+  // What is on the system clipboard ("text:<md5>" / "image:<sha256>"),
   // from each captured copy (live) and `clipboard.sh current` on open.
   property string currentClipKey: ""
   // OCR languages for the settings view (scan.sh --langs).
   property var ocrInfo: ({ installed: [], used: "", env: "", hints: [] })
-  // 1.30.0: language pack sizes from the local pacman database (scan.sh
+  // Language pack sizes from the local pacman database (scan.sh
   // --sizes), read once per settings window; {} = show no sizes.
   property var ocrSizes: ({})
-  // 1.27.0: "Looks like you also use German, install OCR for it?" Languages
+  // "Looks like you also use German, install OCR for it?" Languages
   // come from the locale, keyboard layouts and dictionaries (scan.sh
   // --langs "hints"); dismissed ones are kept in state.json.
   property var ocrDismissed: []
   readonly property var ocrSuggestReal: root.ocrInfo.installed.length ? ClipboardHistory.ocrSuggestions(root.ocrInfo.hints, root.ocrInfo.installed, root.ocrDismissed) : []
-  // 1.29.0, dev only: `omarchy-shell shell call timon.clipboard ocrBannerDemo x`
+  // Dev only: `omarchy-shell shell call timon.clipboard ocrBannerDemo x`
   // shows a demo suggestion in the popup until it is dismissed or the popup
   // closes after showing it. Nothing is written to state.json.
   property string ocrDemoArg: ""
@@ -133,12 +133,12 @@ Item {
   property bool ocrDemoShown: false
   readonly property var ocrSuggest: root.ocrDemo ? [root.ocrDemo].concat(root.ocrSuggestReal.filter(function(x) { return x.code !== root.ocrDemo.code })) : root.ocrSuggestReal
   // A click installs a language in Omarchy's floating terminal through
-  // ocr-install.sh (1.29.0): it shows the exact pacman command and waits for
+  // ocr-install.sh: it shows the exact pacman command and waits for
   // Enter before sudo asks for the password. The plugin never holds root. Installed languages
   // are re-read every 3 s (up to 10 min) until the new one shows up.
   property string ocrInstalling: ""
   property string ocrInstallingName: ""
-  // 1.31.0: languages switched off in Settings (state.json "ocrOff"; scan.sh
+  // Languages switched off in Settings (state.json "ocrOff"; scan.sh
   // reads it too), and the one being removed in the terminal.
   property var ocrOff: []
   property string ocrRemoving: ""
@@ -212,7 +212,7 @@ Item {
     queueProc.payload = JSON.stringify(items)
     queueProc.running = true
   }
-  // 1.21.0: any normal pick or row action while a queue is armed (or rows
+  // Any normal pick or row action while a queue is armed (or rows
   // are Ctrl-selected) forgets that queue silently and does the new thing.
   function dropQueue() {
     root.queueKeys = []
@@ -259,7 +259,7 @@ Item {
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int footerRowHeight: Math.max(Style.space(26), Style.font.body + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
-  // 1.32.0: the caps line under the popup title (stock hero meta).
+  // The caps line under the popup title (stock hero meta).
   readonly property string heroMeta: root.privateMode ? "Incognito · nothing is saved"
     : ClipboardHistory.heroMetaLabel(root.history.length, root.pinnedCount)
   // Small extra gap between the list and the footer.
@@ -267,7 +267,6 @@ Item {
   // Scales with the screen's logical height: unchanged from 1080 px up,
   // 20% smaller on a small laptop screen (ClipboardHistory.popupScale).
   readonly property real popupScale: ClipboardHistory.popupScale(panel.screenH)
-  // List only (no preview column): half the old 875 px width.
   property int cardWidth: panel.fittedContentWidth(Math.round(Style.space(462) * popupScale))
   property int cardHeight: panel.cappedContentHeight(Math.round(Style.space(630) * popupScale))
   // Bar icon the popup hangs from (set by BarWidget.qml through Bridge.js).
@@ -290,7 +289,7 @@ Item {
     root.pathInfo = ({})
     root.pathSingle = false
     mapsCheckProc.running = true
-    // 1.28.0: the OCR banner needs the languages on every open (cheap).
+    // The OCR banner needs the languages on every open (cheap).
     if (!ocrLangProc.running) ocrLangProc.running = true
     root.maybeCheckUpdate()
     root.opened = true
@@ -305,11 +304,10 @@ Item {
     Qt.callLater(function() { searchInput.forceActiveFocus() })
   }
 
-  // Settings live only in their own window (1.29.0; the gear opens it). A
-  // normal toplevel, so Hyprland tiles it like Flux. The window is made by
-  // a Loader and dropped when it is closed (Esc, or Super+W = Hyprland
-  // killactive, which emits closed() but leaves visible = true: 1.26-1.28
-  // then could not show it again), so every open after a close gets a fresh one.
+  // Settings live in their own normal toplevel window, so Hyprland tiles it
+  // like Flux. A Loader makes it and drops it when it closes: Super+W
+  // (killactive) emits closed() but leaves visible = true, so a reused
+  // window could not be shown again.
   function openSettingsWindow(section) {
     root.disarmDelete()
     root.nowSec = Math.floor(Date.now() / 1000)
@@ -355,12 +353,12 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.32.0"
+  readonly property string pluginVersion: "1.32.1"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
   property bool feedbackSent: false
-  // Direct feedback (1.27.0, on since 1.28.0): Send posts the text to the
+  // Direct feedback: Send posts the text to the
   // Nice Clipboard feedback Worker, which files it as an issue in a private
   // repo (rate limited, no IP kept). No browser, no GitHub account; only
   // when Send (or Enter) is pressed.
@@ -378,7 +376,7 @@ Item {
     feedbackProc.running = true
     return true
   }
-  // 1.31.0: Settings > Uninstall. First click arms a button (red, Omarchy's
+  // Settings > Uninstall. First click arms a button (red, Omarchy's
   // check icon), a second click within 3 s opens uninstall.sh in the
   // terminal, which shows the commands and waits for Enter.
   property string uninstallArmed: ""
@@ -395,7 +393,7 @@ Item {
     Quickshell.execDetached(["xdg-open", String(url)])
   }
 
-  // 1.30.0: optional update check, OFF by default (state "updateCheck"):
+  // Optional update check, OFF by default (state "updateCheck"):
   // at most once a day, when the popup opens, update-check.sh asks the
   // public GitHub API for the newest release (anonymous, nothing personal
   // sent). Newer than pluginVersion = a small notice above the list. While
@@ -441,7 +439,7 @@ Item {
     else if (name === "clear") root.requestClearFromSettings()
   }
 
-  // 1.29.0: global shortcuts from the plugin itself (global-keys.sh): Alt+V
+  // Global shortcuts from the plugin itself (global-keys.sh): Alt+V
   // and Alt+Shift+1…9, 0 are added to the running Hyprland on load and after
   // every Hyprland config reload (which drops runtime binds), only where the
   // key is still free; removed when switched off or when the plugin unloads.
@@ -515,7 +513,7 @@ Item {
   function toggleIncognito(arg) { return root.togglePrivate(arg) }
   function setIncognito(arg) { return root.setPrivateMode(arg) }
 
-  // Dev only (1.29.0): force the first-run OCR banner. Arg: a Tesseract code
+  // Dev only: force the first-run OCR banner. Arg: a Tesseract code
   // (e.g. fra) or anything else for the first language not installed; "off"
   // removes it. Open the popup to see it.
   function ocrBannerDemo(arg) {
@@ -531,7 +529,7 @@ Item {
     return JSON.stringify({ private: root.privateMode, incognito: root.privateMode, fluxPaused: root.fluxPaused, open: root.opened, entries: root.history.length, shown: displayModel.count })
   }
 
-  // 1.20.0: every notification goes through omarchy-notification-send with a
+  // Every notification goes through omarchy-notification-send with a
   // glyph (the omarchy-glyph hint) and a body line, so it gets the same large
   // icon as Omarchy's own notifications (a summary-only toast shrinks it).
   function notify(glyph, summary, body, ms) {
@@ -541,13 +539,13 @@ Item {
   // ---- incognito (private) mode -------------------------------------------
   function setPrivate(value, notify) {
     var fluxWasPaused = root.fluxPaused
-    // 1.32.0: leaving incognito starts the phone quarantine (see below).
+    // Leaving incognito starts the phone quarantine (see below).
     if (root.privateMode && !value) { root.fluxResumeMs = Date.now(); root.fluxOnlineMs = 0; fluxResumePoll.restart() }
     else if (value) { root.fluxResumeMs = 0; root.quarantinePending = []; fluxResumePoll.stop() }
     root.privateMode = value
     root.writeState()
     root.syncFlux()
-    // 1.21.0: no incognito on/off notification (the popup and the bar icon
+    // No incognito on/off notification (the popup and the bar icon
     // already show it); `notify` is kept for the callers' signature.
   }
 
@@ -593,7 +591,7 @@ Item {
     root.queueScans()
   }
 
-  // ---- text and QR codes in images (1.16.0) --------------------------------
+  // ---- text and QR codes in images --------------------------------
   // One image at a time, niced, in the background: scan.sh reads the text
   // (tesseract) and QR codes (zbarimg); the result is stored on the entry so
   // it is searchable and the copy-text / open-link buttons appear. Images
@@ -670,8 +668,7 @@ Item {
     root.clickAction = ClipboardHistory.clickActionOf(v)
     root.writeState()
   }
-  // Left click on a row, per Settings > General > "When you left-click an
-  // item" (1.32.0: copy / paste / pasteKeep).
+  // Left click on a row, per Settings > General > "When you left-click an item".
   function clickIndex(index) {
     if (root.clickAction === "pasteKeep" && !ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.pasteKeepIndex(index); return }
     if (root.clickAction !== "copy" || ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.activateIndex(index); return }
@@ -725,7 +722,7 @@ Item {
     if (!root.undoStack.some(function(u) { return u.entry && u.entry.type === "image" })) pruneTimer.restart()
   }
 
-  // 1.32.0: phone items sent during incognito. Incognito stops fluxd; the
+  // Phone items sent during incognito. Incognito stops fluxd; the
   // phone keeps what it sent meanwhile and delivers it as soon as Flux is
   // back (seen on the XPS: link up 18:50:11, the queued phone item 18:50:11).
   // Flux itself can't be told to drop it, so after incognito ends, until 5 s
@@ -823,7 +820,7 @@ Item {
     armTimer.stop()
   }
 
-  // The delete button (1.31.0): the first click arms it (red, Omarchy's
+  // The delete button: the first click arms it (red, Omarchy's
   // check icon), a second click within 3 s deletes. It disarms when the
   // mouse leaves it or the popup closes. Del on the keyboard: pinned rows
   // arm first, unpinned ones go at once. Ctrl+Z brings deleted items back.
@@ -868,7 +865,7 @@ Item {
     root.clearUnpinned()
     Qt.callLater(function() { searchInput.forceActiveFocus() })
   }
-  // 1.32.0: Settings > History clears right there (the popup stays shut):
+  // Settings > History clears right there (the popup stays shut):
   // the first click turns the button red with a check, the second deletes.
   // Disarms after 3 s or when the mouse leaves, like the delete buttons.
   property bool clearArmed: false
@@ -880,7 +877,7 @@ Item {
     root.clearUnpinned()
   }
 
-  // 1.31.0: Ctrl+Z in the popup restores the last deleted items (up to 10,
+  // Ctrl+Z in the popup restores the last deleted items (up to 10,
   // this session only), at their place and with their pin.
   property var undoStack: []
   function undoDelete() {
@@ -936,11 +933,11 @@ Item {
   // Pressing a pinned row stops the list from scrolling under the mouse; once
   // the pointer moves past the threshold the row follows it within the
   // pinned section. Release saves the order (Alt+N follows it). A press
-  // without movement is still a normal click. Wheel/touchpad scroll as before.
+  // without movement is still a normal click.
   property int dragRow: -1          // display index being dragged (-1 = none)
   property bool dragMoved: false
   property int dragHistoryIndex: -1 // history index of the dragged entry (stable while rows move)
-  // 1.18.0: any row can be dragged; over Pinned it becomes pinned at that
+  // Any row can be dragged; over Pinned it becomes pinned at that
   // slot, a pinned row dragged below Pinned is unpinned on drop.
   property bool dragOrigPinned: false
   property int dragOrigIndex: -1
@@ -1004,7 +1001,7 @@ Item {
     var unpinned = root.dragOrigPinned && !nowPinned
     if (nowPinned && !root.dragOrigPinned) next = ClipboardHistory.togglePinAt(next, historyIndex)
     next = ClipboardHistory.reorderPinned(next, order)
-    // 1.19.0: unpinned by dragging = the newest History item (top, now).
+    // Unpinned by dragging = the newest History item (top, now).
     if (unpinned) next = ClipboardHistory.unpinToTop(next, historyIndex, Date.now())
     root.history = next
     root.saveHistory()
@@ -1221,11 +1218,11 @@ Item {
     resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
   }
 
-  // Alt+Shift+1…9, 0 (1.29.0): slot N = pins first, then the newest
+  // Alt+Shift+1…9, 0: slot N = pins first, then the newest
   // history items (ClipboardHistory.slotHistoryIndex, the same mapping as
   // the global bind's paste-slot.sh), whatever the search shows. Pastes at
   // once through clipboard.sh, which sends Shift+Insert via Hyprland with
-  // explicit mods, so the held Alt+Shift do not merge in (1.28.0 fix).
+  // Explicit mods, so the held Alt+Shift do not merge in.
   function activateSlot(slot) {
     var hi = ClipboardHistory.slotHistoryIndex(root.history, slot)
     if (hi < 0) return
@@ -1308,10 +1305,9 @@ Item {
     root.dropQueue()
     root.copyText(r.ocrText)
     root.close()
-    // 1.25.0: show what was recognised, so a bad scan is caught before
-    // pasting: one line, whitespace collapsed, cut with "…", markup escaped.
-    // (1.28.0 tried a shorter preview with the hint in the title; 1.29.0 is
-    // back to the 1.25–1.27 toast: 120 characters, hint on its own line.)
+    // Show what was recognised, so a bad scan is caught before
+    // pasting: one line, whitespace collapsed, cut at 120 characters with
+    // "…", markup escaped, the hint on its own line.
     root.notify("󰆏", r.ocrTip.replace(/^Copy/, "Copied"), ClipboardHistory.ocrPreview(r.ocrText) + "\nPaste it with Super+V.", 6000)
   }
   function openIndex(index) { root.runOnIndex(index, "open") }
@@ -1338,12 +1334,13 @@ Item {
 
   onSelectedIndexChanged: root.actionFocus = -1
 
-  // ---- edit a text item (1.32.0) -------------------------------------------
+  // ---- edit a text item -------------------------------------------
   // The row's Edit button opens the whole text in a field in the row; Enter
   // (or the check button) saves it into the same history item (pin, place
   // and time stay), Shift+Enter adds a line, Esc cancels. The clipboard
   // itself is not touched; pick the item afterwards to paste the new text.
   property string editOrig: ""
+  property string editDraft: ""
   function startEdit(index) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
@@ -1353,6 +1350,7 @@ Item {
     root.disarmDelete()
     root.cursorActive = true
     root.selectedIndex = index
+    root.editDraft = e.text
     root.editOrig = e.text
   }
   function cancelEdit() {
@@ -1388,7 +1386,7 @@ Item {
     var alt = (event.modifiers & Qt.AltModifier) !== 0
     var shift = (event.modifiers & Qt.ShiftModifier) !== 0
 
-    // 1.31.0: Ctrl+Z undoes the last delete (else it edits the search text).
+    // Ctrl+Z undoes the last delete (else it edits the search text).
     if (event.key === Qt.Key_Z && ctrl && !alt && !shift && root.undoDelete()) { event.accepted = true; return }
 
     // Left/Right walk the selected row's actions, Enter presses the focused one.
@@ -1534,7 +1532,7 @@ Item {
     }
   }
 
-  // 1.20.0: the clipboard is empty (nothing copied since login, or the app
+  // The clipboard is empty (nothing copied since login, or the app
   // that owned it closed) and the popup just opened: put the top pinned item
   // on it, so Ctrl+V works right away. Copy only, never pasted; nothing
   // happens without a pinned item.
@@ -1546,7 +1544,7 @@ Item {
     root.currentClipKey = ClipboardHistory.clipKeyOf(root.history[i], Qt.md5)
   }
 
-  // 1.27.0: direct feedback POST (only with feedbackEndpoint set). The text
+  // Direct feedback POST (only with feedbackEndpoint set). The text
   // goes over stdin, never argv; the reply is the Worker's JSON plus curl's
   // exit code on the last line.
   Process {
@@ -1796,7 +1794,7 @@ Item {
         anchors.fill: parent
         spacing: root.contentSpacing
 
-        // 1.32.0: header like the stock Wi-Fi / Bluetooth / Display popups:
+        // Header like the stock Wi-Fi / Bluetooth / Display popups:
         // their PanelHero (icon at Style.font.display, title at
         // Style.font.title bold, caps meta line), then a PanelSeparator,
         // 14 px apart as in the Bluetooth panel. The search field takes the
@@ -1993,7 +1991,7 @@ Item {
             Column {
               id: sec
               width: parent ? parent.width : 0
-              // 1.32.0: like the stock Display panel: blocks 14 apart with a
+              // Like the stock Display panel: blocks 14 apart with a
               // PanelSeparator between them, everything flush with the page
               // heading.
               spacing: Style.space(14)
@@ -2057,7 +2055,7 @@ Item {
 
               PanelSeparator { width: parent.width; foreground: root.foreground }
 
-              // 1.30.0: update check, off by default. 1.32.0: a real switch.
+              // Update check, off by default.
               Repeater {
                 model: [
                   { key: "updateCheck", label: "Check for updates", on: root.updateCheck,
@@ -2075,7 +2073,7 @@ Item {
             Column {
               id: sec
               width: parent ? parent.width : 0
-              // 1.31.0: laid out like the stock display panel: section
+              // Laid out like the stock display panel: section
               // header + pills (10 apart), separator, next section, 14 apart.
               spacing: Style.space(14)
 
@@ -2122,7 +2120,7 @@ Item {
 
                 PanelSeparator { width: parent.width; foreground: root.foreground }
 
-                // 1.32.0: clears here, in the settings window (the popup stays
+                // Clears here, in the settings window (the popup stays
                 // shut). Counts unpinned items only; first click arms (red,
                 // check), second click deletes, like the row delete button.
                 Item {
@@ -2166,7 +2164,7 @@ Item {
               width: parent ? parent.width : 0
               spacing: Style.space(14)
 
-              // 1.32.0: what Nice Clipboard adds on top of Flux (approved text).
+              // What Nice Clipboard adds on top of Flux (approved text).
               Column {
                 width: parent.width
                 spacing: Style.space(6)
@@ -2235,7 +2233,7 @@ Item {
             Column {
               id: sec
               width: parent ? parent.width : 0
-              // 1.31.0: installed languages as rows (in use, size on disk,
+              // Installed languages as rows (in use, size on disk,
               // Remove), then "Add language" pills for the others. Sections
               // like the stock display panel: header + content 10 apart,
               // separator, 14 apart. Only installed packs are ever used;
@@ -2279,7 +2277,6 @@ Item {
                       height: root.rowHeight
                       radius: root.cornerRadius
                       color: "transparent"
-                      MouseArea { id: langMouse; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
 
                       Text {
                         anchors.left: parent.left
@@ -2382,7 +2379,7 @@ Item {
                 }
               }
 
-                // 1.27.0: suggestions from the locale / keyboard layout /
+                // Suggestions from the locale / keyboard layout /
                 // dictionaries. Copy puts the pacman command on the
                 // clipboard (never run here: it needs sudo); ✕ hides it for good.
                 Repeater {
@@ -2628,7 +2625,7 @@ Item {
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.body
                     onTextChanged: if (text !== "") { root.feedbackNote = ""; root.feedbackSent = false }
-                    // 1.30.0: Enter sends, Shift+Enter is a new line, Esc
+                    // Enter sends, Shift+Enter is a new line, Esc
                     // leaves the field; other keys type.
                     Keys.onPressed: function(event) {
                       var k = ClipboardHistory.feedbackKey(event.key, event.modifiers & Qt.ShiftModifier, event.modifiers & Qt.ControlModifier)
@@ -2684,8 +2681,8 @@ Item {
                   }
                 }
 
-                // 1.30.0: the result on its own line under Send, wrapping,
-                // so it fits at any window width (was cut off on the right).
+                // The result on its own wrapping line under Send, so it
+                // fits at any window width.
                 Row {
                   objectName: "feedbackNoteRow"
                   visible: root.feedbackNote !== ""
@@ -2716,7 +2713,7 @@ Item {
             }
           }
 
-          // 1.32.0: a setting with an Omarchy ToggleSwitch on the right (the
+          // A setting with an Omarchy ToggleSwitch on the right (the
           // switch owns the click, the row is not a button): label, a short
           // hint, and an optional status line.
           Component {
@@ -2894,14 +2891,14 @@ Item {
                   wheelStep: root.rowHeight * 3
                 }
 
-                // 1.28.0: first-run hint above the list: a missing OCR
+                // First-run hint above the list: a missing OCR
                 // language matching the locale / keyboard layout. Install
                 // or Not now (Not now = the same dismissal as in settings).
                 header: Column {
                   objectName: "clipListHeader"
                   width: ListView.view ? ListView.view.width : 0
 
-                // 1.30.0: "New update available" (only with the update check on).
+                // "New update available" (only with the update check on).
                 Item {
                   id: updateNotice
                   objectName: "updateNotice"
@@ -3102,7 +3099,7 @@ Item {
                   required property string ocrText
                   required property string ocrTip
                   required property string clipKey
-                  // 1.19.0: this entry is what is on the clipboard right now.
+                  // This entry is what is on the clipboard right now.
                   readonly property bool onClipboard: clipKey !== "" && clipKey === root.currentClipKey
                   required property string path
                   required property bool hasMarkdown
@@ -3112,10 +3109,14 @@ Item {
                   readonly property bool hasCursor: root.cursorActive && (root.dragRow >= 0 && root.dragHistoryIndex >= 0 ? historyIndex === root.dragHistoryIndex : index === root.selectedIndex)
                   readonly property bool armed: root.armedDeleteIndex !== -1 && historyIndex === root.armedDeleteIndex
                   readonly property bool showActions: (hasCursor || rowMouse.containsMouse) && !editing
-                  // 1.32.0: edit mode (text items): the row grows to show the
+                  // Edit mode (text items): the row grows to show the
                   // whole text in a field, with a check button to save.
                   readonly property bool editing: root.editOrig !== "" && entryType === "text" && historyIndex >= 0 && historyIndex < root.history.length && root.history[historyIndex].text === root.editOrig
-                  onEditingChanged: if (editing) { editField.text = root.editOrig; editField.cursorPosition = editField.length; Qt.callLater(function() { editField.forceActiveFocus() }) }
+                  // The draft lives in root, so a list rebuild (a new copy
+                  // arriving while editing) recreates the row with it.
+                  function beginEdit() { editField.text = root.editDraft; editField.cursorPosition = editField.length; Qt.callLater(function() { editField.forceActiveFocus() }) }
+                  onEditingChanged: if (editing) beginEdit()
+                  Component.onCompleted: if (editing) beginEdit()
 
                   width: ListView.view.width
                   height: editing ? Math.min(Math.max(root.rowHeight, editField.contentHeight + Style.spacing.controlPaddingY * 2 + Style.space(8)), Math.round(ListView.view.height * 0.7)) : root.rowHeight
@@ -3159,8 +3160,8 @@ Item {
                         var p = rowMouse.mapToItem(resultList.contentItem, mouse.x, mouse.y)
                         var t = resultList.indexAt(Style.space(10), p.y)
                         if (t < 0) {
-                          // In the gap between two rows: stay put (1.15.1 sent the
-                          // row to the top/bottom for a frame = the flicker).
+                          // In the gap between two rows: stay put, or the row
+                          // flickers to the top or bottom for a frame.
                           if (resultList.indexAt(Style.space(10), p.y - resultList.spacing - 1) >= 0) return
                           // Over a section heading (e.g. "History" under
                           // Pinned): count as the row above it, so crossing
@@ -3187,7 +3188,7 @@ Item {
                       root.dragFinish()
                     }
                     onClicked: function(mouse) {
-                      // A drop is not a click (1.15.1 pasted the row and closed the popup).
+                      // A drop is not a click.
                       if (root.dragMoved || dropped) { dropped = false; return }
                       root.cursorActive = true
                       root.selectedIndex = row.index
@@ -3249,6 +3250,7 @@ Item {
                           font.family: root.fontFamily
                           font.pixelSize: Style.font.body
                           onCursorRectangleChanged: editFlick.ensureVisible(cursorRectangle)
+                          onTextChanged: if (row.editing) root.editDraft = text
                           Keys.onPressed: function(event) {
                             var a = ClipboardHistory.editKeyAction(event.key, (event.modifiers & Qt.ShiftModifier) !== 0)
                             if (a === "save") root.saveEdit(editField.text)
@@ -3421,7 +3423,7 @@ Item {
                           readonly property bool keyFocused: row.hasCursor && root.focusedAction === modelData.tip
 
                           // Stock icon button: hover fill/border and stock tooltip.
-                          // 1.31.0: an armed delete is a red button with
+                          // An armed delete is a red button with
                           // Omarchy's check icon; a second click deletes.
                           Rectangle {
                             objectName: "clipDeleteArmed"
@@ -3542,7 +3544,7 @@ Item {
                 visible: label !== ""
                 anchors.left: parent.left
                 width: Math.min(queueLabel.implicitWidth + Style.space(16), Math.max(0, incognitoSwitch.x - Style.space(8)))
-                // 1.21.0: the info line is a pill in the queue badges' accent.
+                // The info line is a pill in the queue badges' accent.
                 height: info ? Math.round(Style.font.body * 1.6) : root.footerRowHeight
                 anchors.verticalCenter: parent.verticalCenter
                 radius: info ? height / 2 : root.cornerRadius
@@ -3670,8 +3672,8 @@ Item {
               Text {
                 anchors.centerIn: parent
                 textFormat: Text.PlainText
-                // 1.26.0: connected = phone with a check (nf-md-cellphone_check),
-                // else the crossed-out phone; colour as before.
+                // Connected = phone with a check (nf-md-cellphone_check),
+                // else the crossed-out phone.
                 objectName: "phoneGlyph"
                 text: ClipboardHistory.phoneGlyph(root.phoneIcon)
                 color: root.phoneIcon === "paused" ? root.accent
@@ -3732,7 +3734,7 @@ Item {
     }
   }
 
-  // Settings window (1.28.0 redesign): about 900 x 650, laid out like a
+  // Settings window: about 900 x 650, laid out like a
   // settings app: a sidebar of sections on the left (title + version on
   // top), one section at a time in the content pane on the right, with its
   // title, a one-line description and the stock divider. The sections are
@@ -3891,7 +3893,7 @@ Item {
           }
         }
 
-        // 1.30.0: the project page, at the bottom of the sidebar.
+        // The project page, at the bottom of the sidebar.
         Rectangle {
           id: sidebarGithub
           objectName: "settingsGithubLink"
@@ -3984,7 +3986,7 @@ Item {
             linkColor: root.accent
             onLinkActivated: function(link) { root.openUrl(link) }
             text: settingsPane.section.desc
-            // 1.31.0: like the vanilla shell's window header description
+            // Like the vanilla shell's window header description
             // (dev gallery): bodySmall, foreground darkened 1.4.
             color: Qt.darker(root.foreground, 1.4)
             font.family: root.fontFamily

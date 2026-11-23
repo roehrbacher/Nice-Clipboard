@@ -17,7 +17,7 @@ n=${1:-}
 [[ $n =~ ^([1-9]|10)$ ]] || exit 1
 dir=$(dirname "$(readlink -f "$0")")
 timeout -s KILL 5 "$dir/clipboard.sh" copy-slot "$n" || exit 1
-# 1.28.0: when the popup is open it has the keyboard, so the paste would
+# When the popup is open it has the keyboard, so the paste would
 # land in its search field: close it first (no-op when it is closed).
 if [[ ${PASTE_PINNED_DRY:-0} == 1 ]]; then echo "hide popup"; else timeout 2 omarchy-shell -q shell hide timon.clipboard >/dev/null 2>&1 || true; fi
 send() {

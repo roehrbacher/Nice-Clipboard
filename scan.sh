@@ -7,12 +7,11 @@ set -uo pipefail
 umask 077
 IMAGE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/timon.clipboard/images"
 
-# OCR languages (1.19.0): only language packs that are installed are used;
+# OCR languages: only language packs that are installed are used;
 # nothing is ever downloaded. Like Omarchy's own omarchy-capture-text,
 # OMARCHY_OCR_LANGS (e.g. "eng+deu") picks them; without it every installed
 # pack is used (English first) except the ones switched off in Settings >
-# Text recognition (state.json "ocrOff", 1.31.0; before 1.31 at most 3 were
-# used, so a 4th installed one silently did nothing).
+# Text recognition (state.json "ocrOff").
 #   scan.sh --langs     print {"installed":[...],"used":"eng+deu","env":"...","hints":[...]}
 #   scan.sh --sizes     language pack sizes from pacman (see below)
 STATE="${XDG_DATA_HOME:-$HOME/.local/share}/timon.clipboard/state.json"
@@ -34,7 +33,7 @@ ocr_langs() {
   fi
   local IFS=+; echo "${picked[*]}"
 }
-# 1.27.0: "hints" (for the "install OCR for German?" suggestion): locale
+# "hints" (for the "install OCR for German?" suggestion): locale
 # values, Hyprland keyboard layouts ("kb:de") and hunspell dictionaries
 # ("dict:de_AT"). Read-only; nothing is installed.
 lang_hints() {
@@ -63,10 +62,10 @@ if [[ ${1:-} == --langs ]]; then
     '{installed: ($inst | split("\n") | map(select(. != ""))), used: $used, env: $env, hints: ($hints | split("\n") | map(select(. != "")))}'
   exit 0
 fi
-# 1.30.0: real sizes of the tesseract language packs, read from the local
+# Real sizes of the tesseract language packs, read from the local
 # pacman sync database (pacman -Si; no network, no root, nothing installed):
 #   scan.sh --sizes     print {"deu":{"download":"5.94 MiB","installed":"14.72 MiB"},...}
-# 1.31.0: installed packs also get "requiredBy" (pacman -Qi), so Settings
+# Installed packs also get "requiredBy" (pacman -Qi), so Settings
 # can say which ones must stay (e.g. eng: omasnap).
 # {} when pacman or the packages are missing.
 if [[ ${1:-} == --sizes ]]; then
@@ -100,7 +99,7 @@ fi
 img=${1:-}
 [[ $img == "$IMAGE_DIR"/* && -r $img ]] || exit 1
 
-# QR codes (1.18.0): zbar (in Omarchy's base packages) misses many real
+# QR codes: zbar (in Omarchy's base packages) misses many real
 # codes: styled/rounded modules, screenshots cropped without the white quiet
 # zone, light-on-dark codes. ZXing (zxing-cpp's ZXingReader, present on
 # Omarchy via LibreOffice / GStreamer) reads those, also inverted ones, so
@@ -118,7 +117,7 @@ if [[ -z $qr ]] && command -v zbarimg >/dev/null; then
 elif ! command -v ZXingReader >/dev/null; then
   complete=false
 fi
-# OCR (1.20.0): the QR code itself is painted over first (ZXing gives its
+# OCR: the QR code itself is painted over first (ZXing gives its
 # corners), so its modules can't turn into junk lines; then tesseract's
 # word confidences drop low-confidence words, icons read as symbols next to
 # labels and symbol-only lines (ocr-clean.awk). The masked copy is a private

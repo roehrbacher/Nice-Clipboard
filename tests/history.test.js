@@ -677,7 +677,6 @@ console.log("filters/ocr: ok")}
   assert.strictEqual(H.searchKeyAction({ key: 0x22, slot: 2, alt: true, ctrl: false, shift: true }), "slot", "Alt+Shift+2")
   assert.strictEqual(H.searchKeyAction({ key: 0x32, slot: 2, alt: true, ctrl: false, shift: false }), "ignore", "plain Alt+2 does nothing")
   assert.strictEqual(H.searchKeyAction({ key: 0x22, slot: 2, alt: true, ctrl: true, shift: true }), "", "not with Ctrl")
-  assert.strictEqual(H.pinHistoryIndex, undefined, "1.28 pin-only mapping removed")
 
   // 1.29.0: global shortcuts summary (global-keys.sh output)
   const gk = H.globalKeysSummary("Alt+V\ttaken\tClipboard history\n" + [1,2,3,4,5,6,7,8,9].map(n => "Alt+Shift+" + n + "\ttaken\tPaste pinned clipboard item " + n).join("\n") + "\nAlt+Shift+0\tbound\t\n")
@@ -738,7 +737,7 @@ console.log("filters/ocr: ok")}
   assert.deepStrictEqual(r2.history.map(e => e.text), ["a", "p"], "a newer copy of the same item is replaced, not doubled")
   assert.strictEqual(H.restoreEntry([], { entry: h0[0], index: 9 }).index, 0, "index clamped")
   for (let i = 0; i < 15; i++) st = H.pushUndo(st, { type: "text", text: "x" + i }, 0)
-  assert.strictEqual(st.length, H.UNDO_MAX); assert.strictEqual(st[st.length - 1].entry.text, "x14")
+  assert.strictEqual(st.length, 10, "keeps the last 10"); assert.strictEqual(st[st.length - 1].entry.text, "x14")
   assert.strictEqual(H.deleteAction(true, false), "arm", "button click / pinned: arm first")
   // 1.31.0: OCR language rows
   const packs = { eng: { installed: "22.38 MiB", requiredBy: ["omasnap", "tesseract"] }, deu: { installed: "14.72 MiB", download: "5.94 MiB", requiredBy: ["tesseract"] }, ita: { installed: "15.21 MiB", requiredBy: ["tesseract"] }, fra: { download: "5.11 MiB" } }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nice Clipboard 1.30.0: optional update check (Settings > General >
+# Nice Clipboard optional update check (Settings > General >
 # "Check for updates", OFF by default). Runs at most once a day, only while
 # the setting is on. Asks the public GitHub API for the newest release (or,
 # without releases, the highest version tag) of roehrbacher/Nice-Clipboard:

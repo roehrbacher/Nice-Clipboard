@@ -1,11 +1,11 @@
 #!/bin/bash
-# 1.29.0: installs one Tesseract language for OCR, in a terminal the user
+# Installs one Tesseract language for OCR, in a terminal the user
 # sees (Settings > Text recognition or the popup banner open it in Omarchy's
 # floating terminal). It shows the exact command first and waits for Enter,
 # so the sudo password is only ever typed after reading what runs. Nice
 # Clipboard itself never holds root.
 #   ocr-install.sh <code> [shown name]            e.g. ocr-install.sh deu German
-#   ocr-install.sh --remove <code> [shown name]   1.31.0: sudo pacman -R
+#   ocr-install.sh --remove <code> [shown name]   sudo pacman -R
 # A pack this script installed is noted in <data dir>/ocr-installed (so
 # "Uninstall plugin and languages" removes only those). --remove refuses a
 # pack something else needs (pacman "Required By" other than tesseract, e.g.

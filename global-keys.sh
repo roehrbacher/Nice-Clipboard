@@ -1,5 +1,5 @@
 #!/bin/bash
-# 1.29.0: Nice Clipboard's own global shortcuts, without touching any
+# Nice Clipboard's own global shortcuts, without touching any
 # Hyprland or Omarchy config file. The plugin adds them to the running
 # Hyprland (`hyprctl eval` with hl.bind, Hyprland 0.55+ Lua config) when it
 # loads and again after every Hyprland config reload (which drops runtime

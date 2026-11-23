@@ -1,12 +1,12 @@
 #!/bin/bash
-# timon.clipboard paste queue (1.17.0). Ctrl+click rows in the popup, then
+# timon.clipboard paste queue. Ctrl+click rows in the popup, then
 # "Paste N in order": every Super+V or Ctrl+V pastes the next item.
 #
 #   queue.sh start     items as a JSON array on stdin ({type:text,text} or
 #                      {type:image,path,mime}); arms the queue
 #   queue.sh next      Ctrl+V while armed: paste item k, then k+1 is next
 #   queue.sh cancel    stop (popup button, watchdog); "cancel esc" also passes Esc on,
-#                      "cancel quiet" (1.21.0: a new pick in the popup) shows nothing
+#                      "cancel quiet" shows nothing
 #   queue.sh status    print {"pos","count"} or nothing
 #
 # How: while a queue is armed, Ctrl+V and Esc are bound at runtime with
@@ -20,11 +20,10 @@
 # A watchdog ends a queue after 15 min without a paste, and a Hyprland
 # config reload (which drops runtime binds) leaves nothing stuck behind.
 # Item contents live only in the user-only queue file, never in argv.
-# 1.18.0 fix: every command runs under a lock (fd 9). wl-copy forks a
-# daemon that serves the clipboard until the next copy; in 1.17.0 it
-# inherited fd 9 and so held the lock, and the 2nd Ctrl+V gave up waiting
-# for it: item 1 pasted, item 2 never did. Children now get fd 9 closed
-# (9>&-), and `next` never waits more than 2 s for the lock.
+# Every command runs under a lock (fd 9). wl-copy forks a daemon that
+# serves the clipboard until the next copy; if it inherited fd 9 it would
+# hold the lock and the next Ctrl+V would never paste. So children get fd 9
+# closed (9>&-), and `next` waits at most 2 s for the lock.
 # QUEUE_DRY=1: print the hyprctl calls instead of running them (tests).
 set -uo pipefail
 umask 077
@@ -44,12 +43,12 @@ notify() {
   local id
   [[ ${QUEUE_DRY:-0} == 1 ]] && { echo "notify ${3:-Paste queue}|$1"; return; }
   id=$(jq -r '.notify // 0' "$Q" 2>/dev/null || echo 0)
-  # 1.20.0: Omarchy's notifier with a numbered-list glyph (large icon slot).
+  # Omarchy's notifier with a numbered-list glyph (large icon slot).
   # $3: title (default "Paste queue").
   id=$(timeout 3 omarchy-notification-send --app-name Clipboard -g "󰉻" -p -r "${id:-0}" -t "${2:-6000}" "${3:-Paste queue}" "$1" 2>/dev/null 9>&-) || return 0
   [[ -s $Q && $id =~ ^[0-9]+$ ]] && jq --argjson id "$id" '.notify = $id' "$Q" >"$Q.tmp" && mv "$Q.tmp" "$Q"
 }
-# 1.22.0: Super+V (Omarchy's universal paste) pastes the next item too. Its
+# Super+V (Omarchy's universal paste) pastes the next item too. Its
 # stock bind is swapped out while the queue runs and put back afterwards with
 # the same behaviour as default/hypr/bindings/clipboard.lua (terminal:
 # Shift+Insert, else Ctrl+V, sent as key state with explicit mods).

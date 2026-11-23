@@ -1,4 +1,4 @@
-# timon.clipboard (1.20.0): turns tesseract TSV into clean text lines.
+# timon.clipboard: turns tesseract TSV into clean text lines.
 # Drops what screenshots of apps typically turn into junk: low-confidence
 # words, icon glyphs read as symbols next to labels ("£ Dynamic QR Code",
 # "@ Top location"), and lines that are only symbols or a stray letter.
@@ -26,7 +26,7 @@ function flush(   i, a, b, s, sum, cnt, chars) {
   a = 1; b = n
   while (a <= b && edgeJunk(a, a < b ? a + 1 : 0)) a++
   while (b >= a && edgeJunk(b, b > a ? b - 1 : 0)) b--
-  # 1.30.0: what is left after dropping icons is one or two letters: that
+  # What is left after dropping icons is one or two letters: that
   # was an icon too (a row of two icons read as "D le" with an Italian or
   # Spanish model installed). A real short line has no icon trimmed off.
   if ((a > 1 || b < n) && b == a && alnum(W[a]) <= 2) { n = 0; return }

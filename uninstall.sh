@@ -1,5 +1,5 @@
 #!/bin/bash
-# 1.31.0: Settings > Uninstall. Runs in Omarchy's floating terminal, shows
+# Settings > Uninstall. Runs in Omarchy's floating terminal, shows
 # every command first and waits for Enter (Ctrl+C cancels).
 #   uninstall.sh               the plugin, its runtime keys and its data
 #   uninstall.sh --languages   also the OCR packs Nice Clipboard installed

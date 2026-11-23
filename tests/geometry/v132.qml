@@ -92,7 +92,12 @@ ShellRoot {
         Qt.callLater(function() {
           console.log("V132 edit row height=" + Math.round(f[0].parent.parent.parent.parent.height) + " vs rowHeight=" + clip.rowHeight)
           png(win, "popup-edit.png", function() {
-            clip.saveEdit(f[0].text)
+            // A new copy while editing rebuilds the list: the draft stays.
+            clip.addClipboardJson(JSON.stringify({ type: "text", text: "delta" }))
+            var g = vis("clipEditField")
+            console.log("V132 copy while editing: fields=" + g.length + " draft kept=" + (g.length === 1 && g[0].text === "alpha edited\nsecond line\nthird line"))
+            clip.saveEdit(g[0].text)
+            clip.history = clip.history.filter(function(e) { return e.text !== "delta" }); clip.rebuildDisplay(true)
             console.log("V132 saved: " + texts())
             clip.runRowAction("edit", rowIndexOf("pin one"), true)
             clip.saveEdit("pin one, edited")

@@ -48,21 +48,21 @@ imported once on first start. To hear about upstream changes, run
   also when opened with Alt+V. Without the bar icon (bar widget not in the
   layout) it opens at the top-left corner. A compact list, no preview pane;
   hover or select a row for its actions: edit (text items), phone (send), trash, pin.
-- **Edit an item:** the pencil button on a text row turns the row into a
-  text field with the whole text (it grows to fit, then scrolls). Enter or
-  the check button saves into the same item (pin, place and copy time stay),
-  Shift+Enter adds a line, Esc cancels. The clipboard itself is not changed;
-  pick the item to paste the new text.
+- **Edit an item.** The pencil button on a text row turns the row into a
+  text field with the whole text. Enter or the check button saves into the
+  same item, so its pin, place and copy time stay. Shift+Enter adds a line,
+  Esc cancels. The clipboard is not changed. Pick the item to paste the new
+  text.
 - **Size:** the popup scales with the screen: full size from 1080 px logical
   height up, down to 85% on small laptop screens.
 - **Touchpad momentum:** a quick two-finger flick keeps the list scrolling
   after the fingers lift and slows down, like GTK apps and browsers. Mouse
   wheel notches scroll a fixed step.
-- **Header:** like the stock Wi-Fi / Bluetooth / Display popups (their
-  `PanelHero` + `PanelSeparator`): the clipboard icon top left, "Clipboard"
-  in the title size, a caps line under it (`54 items · 3 pinned`, or
-  "Incognito · nothing is saved"), a divider to the list. The search button
-  sits on the right; while searching, the field takes the title's place.
+- **Header.** It uses the stock `PanelHero` and `PanelSeparator`, like the
+  Wi-Fi, Bluetooth and Display popups. The clipboard icon sits top left,
+  "Clipboard" is in the title size, and a caps line under it shows
+  `54 items · 3 pinned` or "Incognito · nothing is saved". The search button
+  sits on the right. While you search, the field takes the title's place.
 - **Footer (one row):** Clear history on the left; the Incognito switch, a
   phone button (only when Flux is installed) and a gear icon on the right.
   The phone button's icon and tooltip show the Flux state ("<phone> connected
@@ -219,13 +219,12 @@ Nothing of Flux (binary, unit, config) is touched, so a Flux update cannot undo
 this. When fluxd starts again it records the current clipboard without sending
 it, so nothing copied during incognito reaches the phone.
 
-The other direction (1.32.0): the phone keeps what you send from it while
-fluxd is stopped and delivers it as soon as Flux is back (on the XPS: link up
-and the queued phone item in the same second). Flux can't be told to drop it,
-so after incognito ends, until 5 s after the phone is online again (at most
-10 minutes), new text is held until `flux-cli status` says where it came
-from: from the phone, it is not saved and the clipboard is cleared; anything
-else is saved as usual. Flux's own history still lists the phone item.
+The phone keeps what you send from it while fluxd is stopped, and delivers
+it as soon as Flux is back. Flux has no way to drop it. So after incognito
+ends, new text waits until `flux-cli status` says where it came from. This
+lasts until 5 s after the phone is online again, at most 10 minutes. Text from
+the phone is not saved and the clipboard is cleared. Other text is saved as
+usual. Flux's own history still lists the phone item.
 
 - Flux is only started again if this plugin stopped it (marker file in
   `~/.local/state/timon.clipboard/`). If Flux was off already, or you ran

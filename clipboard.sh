@@ -7,11 +7,11 @@
 #   clipboard.sh copy <index>             copy entry <index> only
 #   clipboard.sh copy-slot <1-10>         copy slot n: pinned entries first, then the newest
 #                                         history ones (global Alt+Shift+1…9, 0; paste-slot.sh)
-#   clipboard.sh paste-md <index>         paste the HTML of entry <index> as Markdown (1.17.0):
+#   clipboard.sh paste-md <index>         paste the HTML of entry <index> as Markdown:
 #                                         pandoc if installed, else html2md.py; plain text if both fail
 #   clipboard.sh markdown <index>         print that Markdown (tests)
 #   clipboard.sh current                  print a key of what is on the clipboard (text:<md5> or
-#                                         image:<sha256>), for the "on the clipboard" mark (1.19.0)
+#                                         image:<sha256>), for the "on the clipboard" mark
 #   clipboard.sh send <index>             send text entry <index> to the phone through fluxd's socket
 #                                         (the local clipboard is not touched)
 #   clipboard.sh open <index>             open a URL in the browser, text in the editor, an image in the editor
@@ -48,7 +48,7 @@ copy_entry() {
   esac
 }
 
-# 1.28.0: Shift+Insert through Hyprland with explicit mods (as paste-slot.sh
+# Shift+Insert through Hyprland with explicit mods (as paste-slot.sh
 # does), so keys still held from the shortcut (Alt of Alt+1) do not merge in:
 # wtype's virtual keyboard shares the modifier state, and Alt+Shift+Insert
 # pastes nothing. wtype stays the fallback when hyprctl is missing or fails.
@@ -88,7 +88,7 @@ paste | copy)
   send_paste
   ;;
 current)
-  # 1.20.0: "empty" when nothing is on the clipboard at all (the popup then
+  # "empty" when nothing is on the clipboard at all (the popup then
   # puts the top pinned item there); a timeout prints nothing (unknown).
   types=$(timeout 2s wl-paste --list-types 2>/dev/null); rc=$?
   (( rc == 124 || rc == 127 )) && exit 0
@@ -117,7 +117,7 @@ markdown | paste-md)
   # Degrade gracefully: no HTML or no converter = the plain text.
   [[ -n ${md//[[:space:]]/} ]] || md=$(jq -j --argjson i "$2" '.[$i].text' "$HISTORY")
   if [[ $1 == markdown ]]; then printf '%s\n' "$md"; exit 0; fi
-  # 1.18.0: the Markdown is a paste, not a copy: capture.sh drops the one
+  # The Markdown is a paste, not a copy: capture.sh drops the one
   # copy whose hash is in skip-next (and nothing else), so it never becomes
   # a history entry. Afterwards the entry itself goes back on the clipboard.
   printf '%s' "$md" | sha256sum | awk '{print $1}' >"$DATA_DIR/skip-next"
@@ -133,7 +133,7 @@ markdown | paste-md)
   rm -f "$DATA_DIR/skip-next"
   ;;
 copy-slot)
-  # 1.29.0: slot 1…10 (key 0 = 10): pinned entries first (history order),
+  # Slot 1…10 (key 0 = 10): pinned entries first (history order),
   # then the newest unpinned ones. Same as ClipboardHistory.slotHistoryIndex.
   [[ ${2:-} =~ ^([1-9]|10)$ && -r $HISTORY ]] || exit 1
   i=$(jq -r --argjson n "$2" '([to_entries[] | select(.value.pinned == true) | .key] + [to_entries[] | select(.value.pinned != true) | .key])[$n - 1] // empty' "$HISTORY") || exit 1
@@ -141,10 +141,9 @@ copy-slot)
   copy_entry "$i" || exit 1
   ;;
 send)
-  # 1.29.0: straight to fluxd's socket (the same "clipboard.send" call the
+  # Straight to fluxd's socket (the same "clipboard.send" call the
   # Flux window uses), so the computer's clipboard and the history order are
-  # left alone (before, the entry was copied first and flux-cli sent the
-  # clipboard). The text goes over the socket, never through argv.
+  # left alone. The text goes over the socket, never through argv.
   valid_index "${2:-}" || exit 1
   [[ $(field "$2" type) == text ]] || exit 1
   sock=${FLUX_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/flux/fluxd.sock}

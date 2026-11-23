@@ -17,7 +17,7 @@ function normalizeEntry(value) {
     var text = String(value.text || "")
     if (text.trim().length === 0) return null
     entry = { type: "text", text: text }
-    // 1.17.0: the HTML a browser offered with it (for "Paste as Markdown").
+    // The HTML a browser offered with it (for "Paste as Markdown").
     if (typeof value.html === "string" && value.html && value.html.length <= 262144) entry.html = value.html
   } else if (type === "image") {
     var path = String(value.path || "")
@@ -28,11 +28,11 @@ function normalizeEntry(value) {
     var bytes = Number(value.bytes)
     if (isFinite(bytes) && bytes > 0) entry.bytes = Math.round(bytes)
     if (value.screenshot === true) entry.screenshot = true
-    // 1.16.0: text read from the image (OCR) and a decoded QR code.
+    // Text read from the image (OCR) and a decoded QR code.
     if (typeof value.ocr === "string" && value.ocr.trim()) entry.ocr = value.ocr.slice(0, 8192)
     if (typeof value.qr === "string" && value.qr.trim()) entry.qr = value.qr.slice(0, 4096)
     if (value.scanned === true) entry.scanned = true
-    // 1.18.0: scans before scanner version 2 (zbar only) are redone once.
+    // Scans before scanner version 2 (zbar only) are redone once.
     if (value.scanv === SCAN_VERSION) entry.scanv = SCAN_VERSION
   } else {
     return null
@@ -42,7 +42,7 @@ function normalizeEntry(value) {
   var at = Number(value.at)
   if (isFinite(at) && at > 0) entry.at = Math.round(at)
   if (value.legacy === true) entry.legacy = true
-  // 1.16.0: window class of the app it was copied from (search app:<name>).
+  // Window class of the app it was copied from (search app:<name>).
   if (typeof value.app === "string" && value.app) entry.app = value.app.slice(0, 64)
   return entry
 }
@@ -113,7 +113,7 @@ function addEntry(history, entry, limit) {
   return pruneToLimit(next, max)
 }
 
-// ---- time-based auto-delete (1.15.0) --------------------------------------
+// ---- time-based auto-delete --------------------------------------
 var KEEP_DAYS = [1, 2, 5, 10, 20]
 var DEFAULT_KEEP_DAYS = 5
 function keepDaysOf(value) {
@@ -122,7 +122,7 @@ function keepDaysOf(value) {
 }
 function keepDaysLabel(days) { return days + (days === 1 ? " day" : " days") }
 
-// Entries without a copy time (before 1.14.0) get `now` and a legacy flag,
+// Entries without a copy time (saved by old versions) get `now` and a legacy flag,
 // so nothing vanishes at once: they age out `days` after the upgrade and
 // keep the "Earlier" heading. Returns { history, changed }.
 function stampMissing(history, now) {
@@ -174,7 +174,7 @@ function removeEntryAt(history, index) {
   return next
 }
 
-// 1.31.0: undo delete (Ctrl+Z in the popup). The popup keeps the last few
+// Undo delete (Ctrl+Z in the popup). The popup keeps the last few
 // deleted entries with their history index; restoring puts the entry back
 // where it was (pinned state included). If the same item was copied again
 // meanwhile, that copy is dropped so it is not listed twice.
@@ -265,7 +265,7 @@ function makeMatcher(query) {
   }
 }
 
-// ---- search filters (1.16.0) -----------------------------------------------
+// ---- search filters -----------------------------------------------
 // Tokens type:image|screenshot|text|link|color|file, app:<name>, is:pinned,
 // today, yesterday and <30m / <2h / <3d are filters; the rest is the search.
 var TYPE_FILTERS = ["image", "screenshot", "text", "link", "color", "file"]
@@ -318,7 +318,7 @@ function matchesFilters(entry, q, now) {
   return true
 }
 
-// What an image row offers besides paste (1.16.0). A QR link or e-mail
+// What an image row offers besides paste. A QR link or e-mail
 // gets the open button; any other QR content (Wi-Fi, vCard, plain text) is
 // copied by the copy-text button; otherwise the text read from the image.
 // { link: {kind,target}|null, copy: text, copyTip }.
@@ -346,13 +346,12 @@ function snippet(text, n) {
   var s = String(text || "").replace(/\s+/g, " ").trim()
   return s.length > n ? s.slice(0, n - 1) + "…" : s
 }
-// 1.18.0: what a QR image row shows instead of "Image · 12 KB".
-// 1.25.0: notification body for "Copied text from screenshot": the OCR
+// What a QR image row shows instead of "Image · 12 KB".
+// Notification body for "Copied text from screenshot": the OCR
 // text on one line (whitespace collapsed), cut at max characters (default
 // 120, whole characters, not halves of an emoji) with "…", in quotes so it
 // can never be read as an option by omarchy-notification-send, and with
 // & < > escaped because notification bodies are markup.
-// (1.28.0 tried 72 characters; 1.29.0 is back to 120 as in 1.25–1.27.)
 function ocrPreview(text, max) {
   var limit = max > 1 ? max : 120
   var chars = Array.from(String(text || "").replace(/\s+/g, " ").trim())
@@ -381,7 +380,7 @@ function qrSummary(entry) {
 }
 
 function imageTextActions(entry) {
-  // 1.19.0: the QR action and the OCR text are independent: an image with
+  // The QR action and the OCR text are independent: an image with
   // both gets both buttons. `wifi` marks a Wi-Fi password (lock icon).
   var out = { link: null, copy: "", copyTip: "", wifi: false, ocr: "", ocrTip: "" }
   if (!entry || entry.type !== "image") return out
@@ -537,14 +536,14 @@ function displayRows(history, query, limit) {
   return out
 }
 
-// ---- Markdown paste (1.17.0) ----------------------------------------------
+// ---- Markdown paste ----------------------------------------------
 // A text entry whose HTML has formatting Markdown can express.
 function hasRichHtml(entry) {
   if (!entry || entry.type !== "text" || typeof entry.html !== "string") return false
   return /<(h[1-6]|a|li|b|strong|em|i|code|pre|table|blockquote)[\s>]/i.test(entry.html)
 }
 
-// What a paste/click does with Ctrl-selected rows (1.19.0): 2+ = close the
+// What a paste/click does with Ctrl-selected rows: 2+ = close the
 // popup, which starts the queue; 0 or 1 = the normal pick of that row.
 function queueOnPick(selected) { return selected >= 2 }
 // Running queue (queue.json items) -> history keys, for the badges.
@@ -564,7 +563,7 @@ function clipKeyOf(entry, md5) {
   return entry.type === "text" && entry.text ? "text:" + md5(String(entry.text)) : ""
 }
 
-// ---- unpin by drag (1.19.0): goes to the top of History, as if just copied.
+// ---- unpin by drag: goes to the top of History, as if just copied.
 function unpinToTop(history, index, now) {
   var values = Array.isArray(history) ? history.slice() : []
   var e = normalizeEntry(values[index])
@@ -579,7 +578,7 @@ function unpinToTop(history, index, now) {
   return values
 }
 
-// 1.20.0: popular OCR languages for the settings list. Codes are the Arch
+// Popular OCR languages for the settings list. Codes are the Arch
 // package suffixes (extra/tesseract-data-<code>, checked with pacman -Si).
 var OCR_LANGUAGES = [
   { code: "eng", name: "English" }, { code: "deu", name: "German" },
@@ -591,14 +590,14 @@ var OCR_LANGUAGES = [
   { code: "chi_sim", name: "Chinese (simplified)" }, { code: "jpn", name: "Japanese" },
   { code: "kor", name: "Korean" }, { code: "ara", name: "Arabic" }
 ]
-// 1.20.0: history index of the top pinned entry (what the Pinned section
+// History index of the top pinned entry (what the Pinned section
 // shows first), or -1. Used to fill an empty clipboard when the popup opens.
 function firstPinnedIndex(history) {
   var rows = displayRows(history, "", 200)
   return rows.length && rows[0].pinned === true ? rows[0].index : -1
 }
 
-// 1.30.0: update check (off by default). "1.31.0" > "1.30.0"?
+// Update check (off by default). "1.31.0" > "1.30.0"?
 function versionNewer(a, b) {
   var re = /^v?(\d+)\.(\d+)\.(\d+)$/
   var x = re.exec(String(a || "").trim()), y = re.exec(String(b || "").trim())
@@ -621,7 +620,7 @@ function updateHowTo(isGit) {
     : "Update: download the new version from the GitHub page and copy it into ~/.config/omarchy/plugins/timon.clipboard, then restart the shell."
 }
 
-// 1.30.0: pack sizes from pacman ("5.94 MiB", "752.64 KiB") as MB for
+// Pack sizes from pacman ("5.94 MiB", "752.64 KiB") as MB for
 // the language pills: the disk space once installed, the download before.
 // "" when pacman gave nothing for it (never a guessed number).
 function pacmanBytes(v) {
@@ -635,7 +634,7 @@ function megabytes(bytes) {
   return (mb < 10 ? (Math.round(mb * 10) / 10).toFixed(1) : String(Math.round(mb))) + " MB"
 }
 
-// 1.29.0: runs the plugin's own ocr-install.sh in Omarchy's floating
+// Runs the plugin's own ocr-install.sh in Omarchy's floating
 // terminal (app id org.omarchy.terminal floats via Omarchy's window rules).
 // The script shows the exact pacman command and waits for Enter before
 // sudo asks for the password. Plain xdg-terminal-exec when uwsm-app is
@@ -649,18 +648,18 @@ function terminalArgv(script, args) {
     + 'else exec setsid xdg-terminal-exec -e "$0" "$@"; fi'
   return ["bash", "-c", launch, String(script)].concat((args || []).map(String))
 }
-// 1.31.0: remove = true gives `ocr-install.sh --remove <code> <name>`.
+// Remove = true gives `ocr-install.sh --remove <code> <name>`.
 function ocrInstallArgv(code, script, name, remove) {
   var c = String(code || "")
   if (!/^[a-z]{3}(_[a-z]{3,4})?$/.test(c) || !script) return []
   return terminalArgv(script, (remove ? ["--remove"] : []).concat([c, String(name || c)]))
 }
-// 1.31.0: Settings > Uninstall: uninstall.sh [--languages] in the terminal.
+// Settings > Uninstall: uninstall.sh [--languages] in the terminal.
 function uninstallArgv(script, languages) {
   return terminalArgv(script, languages ? ["--languages"] : [])
 }
 
-// 1.31.0: Text recognition page. Installed packs as rows (name, size on
+// Text recognition page. Installed packs as rows (name, size on
 // disk, in use, removable or why not), the others as "Add language" pills.
 // packs = scan.sh --sizes ({code: {download, installed, requiredBy:[...]}}),
 // off = codes switched off in settings, env = OMARCHY_OCR_LANGS if set.
@@ -705,12 +704,10 @@ function toggleOcrOff(off, code, installed) {
   return list.concat([code])
 }
 
-// ---- click action (1.18.0) ------------------------------------------------
-// "paste": select, paste and close (default). "copy": put it on the
-// clipboard, popup stays open.
-// 1.32.0: a third choice, "pasteKeep": paste into the window you were in,
-// then the popup comes back. Saved values from before ("copy", "paste")
-// keep their meaning; anything unknown is the default, "paste".
+// ---- click action ------------------------------------------------
+// "paste": paste and close (default). "copy": put it on the clipboard,
+// popup stays open. "pasteKeep": paste into the window you were in, then
+// the popup comes back. Anything unknown is "paste".
 function clickActionOf(v) { return v === "copy" || v === "pasteKeep" ? v : "paste" }
 var CLICK_OPTIONS = [
   { key: "copy", label: "Copy only", explain: "Puts the item on the clipboard and leaves the popup open. Paste it yourself with Ctrl+V." },
@@ -723,7 +720,7 @@ function clickExplain(key) {
   return ""
 }
 
-// 1.32.0: edit a text item in place. It keeps its pin, its place and its
+// Edit a text item in place. It keeps its pin, its place and its
 // time; the browser HTML that came with it is dropped (it no longer matches).
 // Another unpinned item with the new text goes, so a text is listed once.
 // Empty text = nothing changes.
@@ -753,7 +750,7 @@ function editKeyAction(key, shift) {
   return ""
 }
 
-// 1.32.0: the caps line under the popup title, like the stock hero meta
+// The caps line under the popup title, like the stock hero meta
 // ("CONNECTED"): "54 items · 3 pinned".
 function heroMetaLabel(total, pinned) {
   var n = Math.max(0, Number(total) || 0), p = Math.max(0, Number(pinned) || 0)
@@ -761,14 +758,14 @@ function heroMetaLabel(total, pinned) {
   return p > 0 ? out + " · " + p + " pinned" : out
 }
 
-// 1.32.0: Settings > History > Clear history, counting unpinned items only.
+// Settings > History > Clear history, counting unpinned items only.
 function clearHistoryLabel(n) {
   var c = Math.max(0, Number(n) || 0)
   if (c === 0) return "Clear history (nothing to delete, pins stay)"
   return "Clear history: delete " + c + (c === 1 ? " item" : " items") + " (pins stay)"
 }
 
-// 1.32.0: items the phone queued while incognito paused Flux arrive right
+// Items the phone queued while incognito paused Flux arrive right
 // after Flux starts again (the phone sends them as soon as it reconnects).
 // From the resume until 5 s after the phone is seen online again (at most
 // 10 minutes), text from the phone is dropped.
@@ -781,7 +778,7 @@ function fluxQuarantineActive(startMs, onlineMs, nowMs) {
   return true
 }
 
-// ---- settings: search filter examples (1.18.0) ----------------------------
+// ---- settings: search filter examples ----------------------------
 var SEARCH_FILTER_EXAMPLES = [
   { value: "type:image", label: "Images" },
   { value: "type:screenshot", label: "Screenshots" },
@@ -796,7 +793,7 @@ var SEARCH_FILTER_EXAMPLES = [
   { value: "<30m  <2h  <3d", label: "Copied in the last …" }
 ]
 
-// ---- drag between Pinned and History (1.18.0) ------------------------------
+// ---- drag between Pinned and History ------------------------------
 // Where the dragged row goes for pointer target `t` (display index).
 // `others`: pinned rows not counting the dragged one; `count`: all rows;
 // `origPinned`/`origIndex`: where the drag started. Over the pinned rows
@@ -809,7 +806,7 @@ function dragPlan(t, others, count, origPinned, origIndex) {
   return { index: origPinned ? others : Math.max(others, Math.min(count - 1, origIndex)), pinned: false }
 }
 
-// ---- paste queue (1.17.0) -------------------------------------------------
+// ---- paste queue -------------------------------------------------
 // Ctrl+click adds a row to the queue (at the end) or takes it out; the rows
 // after it move up one number.
 function toggleQueued(keys, key) {
@@ -833,8 +830,8 @@ function queueItems(entries) {
   }
   return out
 }
-// 1.19.0: no start button any more (2+ selected rows start the queue when
-// the popup closes); the footer only shows a running queue.
+// 2+ selected rows start the queue when the popup closes; the footer
+// only shows a running queue.
 function queueButtonLabel(selected, running) {
   if (selected >= 2) return "Paste queue: " + selected + " items in order"
   if (running && running.count > 0) return "Pasting " + Math.min(running.pos + 1, running.count) + " of " + running.count + " · Cancel"
@@ -857,7 +854,7 @@ var KEY = {
 
 // Day bucket of a copy time (ms) relative to `now` (ms), local time:
 // "today", "Yesterday", "Mon 20 Oct", or "Earlier" (no time recorded:
-// entries from before 1.14.0).
+// entries saved by old versions).
 var DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 var MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 function dayLabel(at, now) {
@@ -1093,7 +1090,7 @@ function searchKeyAction(ev) {
   var key = ev.key
   if (key === KEY.Escape) return ev.queued > 0 ? "queueClear" : "escape"
   if (ev.ctrl && !ev.alt && key === KEY.Space) return "queueToggle"
-  // 1.29.0: Alt+Shift+1…9, 0 (slots); plain Alt+N does nothing.
+  // Alt+Shift+1…9, 0 (slots); plain Alt+N does nothing.
   if (ev.slot >= 1 && ev.alt && ev.shift && !ev.ctrl) return "slot"
   // Plain Alt+digit: swallowed, so no digit lands in the search field.
   if (ev.slot >= 1 && ev.alt && !ev.ctrl) return "ignore"
@@ -1153,7 +1150,7 @@ function phoneGlyph(state) {
 // Left/Right keep moving the text cursor while you edit the search.
 // Row actions left to right: phone (send), trash, pin. Pin is last so it
 // stays in the slot where a pinned row shows it when not hovered.
-// 1.31.0: an armed delete keeps the other buttons (only it turns red), so
+// An armed delete keeps the other buttons (only it turns red), so
 // nothing moves under the mouse between the two clicks. "armed" is unused.
 function rowActionNames(armed, phoneOnline, isText, linkKind, hasCopyText, hasMarkdown, hasOcr) {
   var out = []
@@ -1333,7 +1330,7 @@ function kineticFlickVelocity(velocity, msSinceLastDelta) {
   return Math.abs(velocity) < 150 ? 0 : velocity
 }
 
-// ---- OCR language suggestions (1.27.0) ------------------------------------
+// ---- OCR language suggestions ------------------------------------
 // scan.sh --langs reports "hints": the locale settings (LANG, LANGUAGE, LC_*,
 // locale.conf) as-is, Hyprland keyboard layouts as "kb:<layout>" and hunspell
 // dictionaries as "dict:<name>". These map them to tesseract-data-<code>.
@@ -1376,7 +1373,7 @@ function ocrSuggestions(hints, installed, dismissed) {
   }
   return out
 }
-// 1.29.0, dev only: a demo banner suggestion for testing the first-run
+// Dev only: a demo banner suggestion for testing the first-run
 // banner on a machine where nothing would be suggested (IPC ocrBannerDemo).
 // Uses `code` when it is a known, not installed language, else the first
 // known language that is not installed. null when everything is installed.
@@ -1394,9 +1391,9 @@ function ocrDemoSuggestion(installed, code) {
            cmd: "sudo pacman -S tesseract-data-" + pick.code,
            text: "Looks like you also use " + pick.name + " (demo banner). Install OCR for it?" }
 }
-// ---- global shortcuts from the plugin (1.29.0, global-keys.sh) -----------
+// ---- global shortcuts from the plugin -----------
 // "Alt+V", "Alt+Shift+1" … → "Alt+V, Alt+Shift+1–0" (runs in 1–9, 0 order;
-// 1.32.0: an en dash, so all ten read "1–0").
+// An en dash, so all ten read "1–0").
 function keyLabels(labels) {
   var order = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], other = [], digits = []
   ;(labels || []).forEach(function(l) {
@@ -1435,14 +1432,14 @@ function ocrDismissedOf(v) {
   return Array.isArray(v) ? v.filter(function(c) { return typeof c === "string" && /^[a-z_]{2,10}$/.test(c) }) : []
 }
 
-// ---- direct feedback (1.27.0) ---------------------------------------------
+// ---- direct feedback ---------------------------------------------
 // Only used when Clipboard.qml's feedbackEndpoint is set (off until the
 // Worker exists). "website" is the honeypot field: always empty from here.
 function feedbackPayload(text, version) {
   return JSON.stringify({ message: String(text || "").trim(), version: String(version || ""), website: "" })
 }
-// 1.30.0: keys in the feedback field. Enter sends, Shift+Enter is a new
-// line (Ctrl+Enter keeps sending, the old key); everything else types.
+// Keys in the feedback field. Enter sends, Shift+Enter is a new
+// line, Ctrl+Enter sends too; everything else types.
 function feedbackKey(key, shift, ctrl) {
   if (key !== 0x01000004 && key !== 0x01000005) return ""
   return shift && !ctrl ? "newline" : "send"
@@ -1467,7 +1464,7 @@ function feedbackResultFromCurl(out) {
   return feedbackResult(isNaN(code) ? -1 : code, nl >= 0 ? s.slice(0, nl) : "")
 }
 
-// ---- Alt+Shift+1…9, 0 slots (1.29.0) -------------------------------------
+// ---- Alt+Shift+1…9, 0 slots -------------------------------------
 // Ten slots, the same in the popup and from anywhere (paste-slot.sh):
 // pinned items first, in their order, then the newest history items fill
 // what is left. 9 pins: Alt+Shift+0 = newest history item; 4 pins:
