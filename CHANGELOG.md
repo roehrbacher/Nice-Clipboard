@@ -2,6 +2,13 @@
 
 Newest first. Older history is in the git log.
 
+## 1.26.0
+
+- Alt+1…9 in the popup pastes history items 1…9; pinned items are skipped (they keep Alt+Shift+1…9, which works anywhere). Before, pins took the first numbers, so with 4 pins Alt+1 pasted a pin and the first history item was Alt+5. Row hints say Alt+N on history rows and Alt+Shift+N on pins.
+- Clear history counts only what it deletes: unpinned items ("Clear history (3 items)" with 3 history + 4 pinned; was 7). The confirm says "Delete 3 history items? Pinned items stay." and does nothing when only pins are left.
+- The Flux phone button shows the state itself: phone with a check (nf-md-cellphone_check) when connected, crossed-out phone otherwise.
+- Try-out: a second button next to the gear, "Settings in a window" (󰏌), opens the same settings in their own window (about 900 × 650, two columns), tiled on the current workspace like Flux; Esc closes it. The gear ("Settings in this popup") still opens the page in the popup. The sections are now shared Components, so both show the same controls.
+
 ## 1.25.0
 
 - Settings are easier to scan: sections with the stock Display panel's divider line and section headers (qs.Ui PanelSeparator / PanelSectionHeader, same gaps), most-used first: General (incognito, click action), History (delete after, clear history), Flux, Text recognition (OCR), Search filters, Shortcuts, Feedback. ↑ ↓ follow the new order.

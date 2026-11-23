@@ -584,3 +584,29 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.strictEqual(emoji, "“😀😀😀😀…”", "no broken surrogate pairs")
   console.log("ok 1.25.0 OCR preview")
 }
+
+{
+  // 1.26.0: Alt+N = Nth history row (pins skipped); hints; clear counts unpinned only
+  const rows = [{ pinned: true }, { pinned: true }, { pinned: false }, { pinned: false }, { pinned: false }]
+  assert.strictEqual(H.historySlotRowIndex(rows, 1), 2, "Alt+1 = first history row, below the pins")
+  assert.strictEqual(H.historySlotRowIndex(rows, 3), 4, "Alt+3 = third history row")
+  assert.strictEqual(H.historySlotRowIndex(rows, 4), -1, "no fourth history row")
+  assert.strictEqual(H.historySlotRowIndex([{ pinned: false }], 1), 0, "no pins: Alt+1 = top row")
+  assert.strictEqual(H.slotHint(true, 2, 2), "Alt+Shift+2", "pinned rows show the global Alt+Shift+N")
+  assert.strictEqual(H.slotHint(false, 3, 2), "Alt+1", "first history row under 2 pins is Alt+1")
+  assert.strictEqual(H.slotHint(false, 12, 2), "", "history rows past 9 have no hint")
+  assert.strictEqual(H.slotHint(true, 10, 12), "", "pins past 9 have no hint")
+  const hist = [
+    { type: "text", text: "p1", pinned: true }, { type: "text", text: "p2", pinned: true },
+    { type: "text", text: "p3", pinned: true }, { type: "text", text: "p4", pinned: true },
+    { type: "text", text: "h1" }, { type: "text", text: "h2" }, { type: "text", text: "h3" }
+  ]
+  assert.strictEqual(H.unpinnedCount(hist), 3, "3 history + 4 pinned: clear deletes 3")
+  assert.strictEqual(H.pinnedCount(hist), 4)
+  assert.strictEqual(H.clearLabelText(H.unpinnedCount(hist), true), "󰩺  Clear history (3 items)", "label counts unpinned only")
+  assert.deepStrictEqual(H.clearHistory(hist).map(e => e.text), ["p1", "p2", "p3", "p4"], "clearing keeps every pin")
+  assert.strictEqual(H.unpinnedCount(H.clearHistory(hist)), 0, "nothing left to clear afterwards")
+  assert.strictEqual(H.phoneGlyph("online").codePointAt(0), 0xF17FD, "connected: cellphone-check")
+  assert.strictEqual(H.phoneGlyph("nophone").codePointAt(0), 0xF0950, "not connected: cellphone-off")
+  console.log("ok 1.26.0 Alt+N history slots, clear count, phone glyph")
+}

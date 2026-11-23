@@ -53,8 +53,11 @@ ShellRoot {
     var col = all("infoColumn")[0]
     flick = all("infoFlick")[0]
     var heads = [], order = []
-    for (var i = 0; i < col.children.length; i++) {
-      var k = col.children[i]
+    // 1.26.0: sections sit in Loaders; look one level down.
+    var kids = []
+    for (var j = 0; j < col.children.length; j++) { var c = col.children[j]; if (c.item) for (var q = 0; q < c.item.children.length; q++) kids.push(c.item.children[q]); else kids.push(c) }
+    for (var i = 0; i < kids.length; i++) {
+      var k = kids[i]
       if (k.title !== undefined && k.first !== undefined) {
         var sep = k.children[0], hdr = k.children[1]
         heads.push(k.title + "@y" + Math.round(k.y) + (sep.visible ? " rule(h" + sep.height + " a" + sep.color.a.toFixed(2) + " w" + sep.width + "/" + col.width + ")" : " no-rule")

@@ -67,7 +67,12 @@ imported once on first start. To hear about upstream changes, run
   General (incognito, click action), History (delete after, clear), Flux
   (phone, last sync, "Send current clipboard" with Ctrl+S), Text recognition
   (OCR languages), Search filters, Shortcuts, Feedback. The header then says
-  "Settings" and the search button becomes a back arrow. Hovering the phone action
+  "Settings" and the search button becomes a back arrow. Next to the gear, a
+  second button (󰏌, "Settings in a window") opens the same settings in their
+  own window (about 900 × 650, two columns), tiled on the current workspace
+  like Flux; Esc closes it. Both stay for now, to compare.
+- **Flux state on the phone button:** a phone with a check when a phone is
+  connected, a crossed-out phone otherwise (paused: accent colour). Hovering the phone action
   of a row shows "Send via Flux".
 - **Incognito:** nothing new is saved (text or images) until you turn it
   off; a small "Incognito" badge in the popup shows it. Survives a restart.
@@ -208,12 +213,12 @@ In the popup:
 | Alt+Enter | open (URL in browser, text in editor, image in editor) |
 | Ctrl+click / Ctrl+Space | add the row to the paste queue (numbered 1, 2, 3 …); again takes it out |
 | Ctrl+click / Ctrl+Space 2+ items, then close the popup (Enter, click, Esc twice or click outside) | start the paste queue: every Super+V (or Ctrl+V) pastes the next item, Esc cancels |
-| Alt+1…9 | paste the Nth item from the top, pinned items first (pastes when you let go of Alt) |
+| Alt+1…9 | paste the Nth history item (pinned items are skipped: they have Alt+Shift+1…9, which works anywhere); pastes when you let go of Alt. Rows show their key: Alt+N on history, Alt+Shift+N on pins |
 | → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
 | Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
 | Delete (or the trash icon) | delete the item (with search text selected: delete that text). A pinned item turns red first: press Del again within 3 s to delete it; any other key cancels |
 | Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in the settings view: send the current clipboard |
-| Shift+Delete | clear history (asks first; pinned items stay) |
+| Shift+Delete | clear history (asks first; only unpinned items are counted and deleted, pinned items stay) |
 | Ctrl+I (or the Incognito switch in the footer, or right-click the bar icon) | incognito on/off |
 | Backspace, Ctrl+Backspace, ← →, Ctrl+Z | edit the search |
 | Ctrl+U | clear the search |
@@ -271,6 +276,7 @@ bash tests/capture.test.sh     # capture: incognito, password hint, size caps, 0
 bash tests/flux-pause.test.sh  # Flux pause/resume with a stub systemctl (never touches the real fluxd)
 bash tests/queue.test.sh       # paste queue (stub hyprctl / wl-copy / notifier), incl. quiet cancel
 bash tests/version.test.sh      # Clipboard.qml version (sent with feedback) = manifest = CHANGELOG
+bash tests/geometry/run-v126.sh # 1.26.0 offscreen: Alt+1 pastes the first history row, clear count, phone glyph, settings window (writes PNGs)
 bash tests/geometry/run-v125.sh # 1.25.0 offscreen: settings sections and dividers, back arrow, OCR preview notification (writes a PNG)
 bash tests/geometry/run-v121.sh # 1.21.0 offscreen: queue pill, queue dropped on pick/buttons, notifications, OCR help
 ```

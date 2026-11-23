@@ -932,6 +932,48 @@ function searchKeyAction(ev) {
 
 // ---- v1.3 helpers -----------------------------------------------------------
 
+// 1.26.0: Alt+N pastes the Nth *history* row (pins have Alt+Shift+N,
+// which works anywhere). rows: [{ pinned }] in display order. Returns the
+// display index, or -1.
+function historySlotRowIndex(rows, n) {
+  var list = rows || [], k = 0
+  for (var i = 0; i < list.length; i++) if (!list[i].pinned && ++k === n) return i
+  return -1
+}
+
+// Key hint on a row: "Alt+N" for history rows 1..9, "Alt+Shift+N" for
+// pinned rows 1..9 (slot = display position, pinned rows come first).
+function slotHint(pinned, slot, pinnedCount) {
+  if (pinned) return slot >= 1 && slot <= 9 ? "Alt+Shift+" + slot : ""
+  var n = slot - (pinnedCount | 0)
+  return n >= 1 && n <= 9 ? "Alt+" + n : ""
+}
+
+// Unpinned entries: what "Clear history" deletes (pins stay).
+function unpinnedCount(history) {
+  var values = Array.isArray(history) ? history : [], n = 0
+  for (var i = 0; i < values.length; i++) {
+    var e = normalizeEntry(values[i])
+    if (e && !e.pinned) n++
+  }
+  return n
+}
+
+function pinnedCount(history) {
+  var values = Array.isArray(history) ? history : [], n = 0
+  for (var i = 0; i < values.length; i++) {
+    var e = normalizeEntry(values[i])
+    if (e && e.pinned) n++
+  }
+  return n
+}
+
+// Footer phone glyph per state: connected = phone with a check
+// (nf-md-cellphone_check), anything else = crossed-out phone.
+function phoneGlyph(state) {
+  return state === "online" ? "󱟽" : "󰥐"
+}
+
 // Alt+N: display index of the Nth row (top to bottom), or -1.
 function slotRowIndex(rows, slot) {
   var list = rows || []
@@ -1179,6 +1221,11 @@ if (typeof module !== "undefined") {
     KEY: KEY,
     searchKeyAction: searchKeyAction,
     slotRowIndex: slotRowIndex,
+    historySlotRowIndex: historySlotRowIndex,
+    slotHint: slotHint,
+    unpinnedCount: unpinnedCount,
+    pinnedCount: pinnedCount,
+    phoneGlyph: phoneGlyph,
     isModifierKey: isModifierKey,
     deleteAction: deleteAction,
     countLabel: countLabel,

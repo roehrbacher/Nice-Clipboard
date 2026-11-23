@@ -80,6 +80,9 @@ Item {
   // flux-pause.sh's last answer: absent, running, paused or off.
   property string fluxState: ""
   // Footer phone button: "online", "nophone", "paused", "off" or "" (hidden).
+  // 1.26.0: Clear history counts (and deletes) unpinned items only.
+  readonly property int unpinnedCount: ClipboardHistory.unpinnedCount(root.history)
+  readonly property int pinnedCount: ClipboardHistory.pinnedCount(root.history)
   readonly property string phoneIcon: ClipboardHistory.phoneIconState(root.fluxState, root.phoneOnline)
   readonly property string fluxStatusText: !root.fluxPresent ? "not installed"
     : (root.fluxPaused ? "paused (incognito)"
@@ -259,6 +262,20 @@ Item {
     else infoFlick.contentY = 0
   }
 
+  // 1.26.0 try-out: the same settings in their own window (a normal
+  // toplevel, so Hyprland tiles it on the current workspace like Flux).
+  // The popup closes; Esc or the window's close key hides it again.
+  function openSettingsWindow() {
+    root.disarmDelete()
+    root.nowSec = Math.floor(Date.now() / 1000)
+    if (root.fluxPresent && !root.fluxPaused && !statusProc.running) statusProc.running = true
+    if (!ocrLangProc.running) ocrLangProc.running = true
+    root.infoIndex = 0
+    if (root.opened) root.close()
+    settingsWindow.visible = true
+    Qt.callLater(function() { settingsKeys.forceActiveFocus() })
+  }
+
   // Footer phone button: open Flux's own window (flux-cli open: its shell
   // plugin, else flux-gui) and close the popup; without flux-cli, the Flux
   // section of the settings view.
@@ -296,7 +313,7 @@ Item {
   // the browser; the plugin needs no token, GitHub uses the browser login.
   readonly property string feedbackRepo: "roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.25.0"
+  readonly property string pluginVersion: "1.26.0"
   property string feedbackNote: ""
   function feedbackUrl(text) {
     var t = String(text || "").trim()
@@ -306,13 +323,14 @@ Item {
     return "https://github.com/" + root.feedbackRepo + "/issues/new?labels=feedback&title="
       + encodeURIComponent(title) + "&body=" + encodeURIComponent(body)
   }
-  function sendFeedback() {
-    var t = feedbackInput.text.trim()
+  // input: the feedback field that was used (popup page or settings window).
+  function sendFeedback(input) {
+    var t = input ? input.text.trim() : ""
     if (t === "") { root.feedbackNote = "Write something first"; return false }
     Quickshell.execDetached(["xdg-open", root.feedbackUrl(t)])
-    feedbackInput.text = ""
+    input.text = ""
     root.feedbackNote = "Opened in your browser: submit it there"
-    searchInput.forceActiveFocus()
+    if (!settingsWindow.visible) searchInput.forceActiveFocus()
     return true
   }
 
@@ -586,7 +604,7 @@ Item {
   }
 
   function requestClearHistory() {
-    if (root.history.length === 0) return
+    if (root.unpinnedCount === 0) return
     clearConfirm.selectedIndex = 1
     root.clearConfirmOpen = true
   }
@@ -935,13 +953,14 @@ Item {
     resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
   }
 
-  // Alt+N: Nth row from the top (pinned first). Pastes like Enter, but only
+  // Alt+N (1.26.0): Nth history row, pins skipped (they have Alt+Shift+N,
+  // which works anywhere). Pastes like Enter, but only
   // once Alt is released (or after 1 s), so the paste key is not sent while
   // Alt is still held down.
   function activateSlot(slot) {
     var rows = []
-    for (var i = 0; i < displayModel.count; i++) rows.push({ slot: displayModel.get(i).slot })
-    var index = ClipboardHistory.slotRowIndex(rows, slot)
+    for (var i = 0; i < displayModel.count; i++) rows.push({ pinned: displayModel.get(i).pinned })
+    var index = ClipboardHistory.historySlotRowIndex(rows, slot)
     if (index < 0) return
     root.selectAbsolute(index)
     root.pendingPasteIndex = index
@@ -1435,7 +1454,7 @@ Item {
           anchors.fill: parent
           opened: root.clearConfirmOpen
           z: 10
-          message: "Delete clipboard history? Pinned items stay."
+          message: "Delete " + root.unpinnedCount + (root.unpinnedCount === 1 ? " history item" : " history items") + "? Pinned items stay."
           confirmText: "Delete"
           background: root.background
           foreground: root.foreground
@@ -1656,11 +1675,58 @@ Item {
                 width: infoFlick.width
                 spacing: Style.space(2)
 
+                Loader {
+                  width: parent.width
+                  sourceComponent: secGeneral
+                  onLoaded: item.firstInColumn = true
+                }
+                Loader {
+                  width: parent.width
+                  sourceComponent: secHistory
+                }
+                Loader {
+                  id: fluxSection
+                  width: parent.width
+                  sourceComponent: secFlux
+                }
+                Loader {
+                  width: parent.width
+                  sourceComponent: secOcr
+                }
+                Loader {
+                  width: parent.width
+                  sourceComponent: secFilters
+                }
+                Loader {
+                  width: parent.width
+                  sourceComponent: secShortcuts
+                }
+                Loader {
+                  width: parent.width
+                  sourceComponent: secFeedback
+                }
+                Item { width: 1; height: Style.space(6) }
+              }
+            }
+          }
+
+          // 1.26.0: each settings section is a Component, so the same sections
+          // fill the popup page (one column) and the settings window (two).
+          // firstInColumn drops the divider above the first one in a column.
+          Component {
+            id: secGeneral
+            Column {
+              id: sec
+              property bool firstInColumn: false
+              property bool inWindow: false
+              width: parent ? parent.width : 0
+              spacing: Style.space(2)
+
                 // 1.25.0: sections like the stock Display panel (PanelSeparator +
                 // PanelSectionHeader between them), most-used settings first.
                 SettingsHeading {
                   title: "GENERAL"
-                  first: true
+                  first: sec.firstInColumn
                 }
                 Repeater {
                   model: [
@@ -1680,7 +1746,7 @@ Item {
                   id: clickRow
                   objectName: "clipClickRow"
                   x: Style.space(10)
-                  width: infoColumn.width - Style.space(20)
+                  width: parent.width - Style.space(20)
                   columns: 2
                   spacing: Style.spacing.xs
                   readonly property real cellWidth: (width - spacing) / 2
@@ -1708,9 +1774,22 @@ Item {
                     }
                   }
                 }
+            }
+          }
+
+          Component {
+            id: secHistory
+            Column {
+              id: sec
+              property bool firstInColumn: false
+              property bool inWindow: false
+              width: parent ? parent.width : 0
+              spacing: Style.space(2)
 
                 SettingsHeading {
                   title: "HISTORY"
+
+                  first: sec.firstInColumn
                 }
                 Repeater {
                   model: [
@@ -1725,7 +1804,7 @@ Item {
                   id: keepRow
                   objectName: "clipKeepRow"
                   x: Style.space(10)
-                  width: infoColumn.width - Style.space(20)
+                  width: parent.width - Style.space(20)
                   columns: ClipboardHistory.KEEP_DAYS.length
                   spacing: Style.spacing.xs
                   readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
@@ -1757,12 +1836,22 @@ Item {
                   ]
                   delegate: infoActionRow
                 }
+            }
+          }
 
+          Component {
+            id: secFlux
+            Column {
+              id: sec
+              property bool firstInColumn: false
+              property bool inWindow: false
+              width: parent ? parent.width : 0
+              spacing: Style.space(2)
 
                 // Flux section (the footer phone button opens the view here).
                 SettingsHeading {
-                  id: fluxSection
                   title: "FLUX (PHONE)"
+                  first: sec.firstInColumn
                 }
                 Repeater {
                   model: [
@@ -1776,7 +1865,7 @@ Item {
                   id: sendRow
                   readonly property bool enabled: root.phoneOnline && !root.fluxPaused
                   readonly property bool current: root.infoIndex === root.infoActions.indexOf("send")
-                  width: infoColumn.width
+                  width: parent.width
                   height: root.rowHeight
                   radius: root.cornerRadius
                   color: current ? Style.hoverFillFor(root.foreground, root.accent) : (sendMouse.containsMouse && enabled ? Util.alpha(root.foreground, 0.08) : "transparent")
@@ -1812,6 +1901,17 @@ Item {
                     onClicked: { root.infoIndex = root.infoActions.indexOf("send"); root.sendCurrentClipboard() }
                   }
                 }
+            }
+          }
+
+          Component {
+            id: secOcr
+            Column {
+              id: sec
+              property bool firstInColumn: false
+              property bool inWindow: false
+              width: parent ? parent.width : 0
+              spacing: Style.space(2)
 
                 // OCR languages (1.20.0). Only installed packs are used,
                 // nothing is downloaded; OMARCHY_OCR_LANGS picks them, like
@@ -1820,6 +1920,7 @@ Item {
                 SettingsHeading {
                   objectName: "clipOcrHeading"
                   title: "TEXT RECOGNITION (OCR)"
+                  first: sec.firstInColumn
                 }
                 Repeater {
                   model: [
@@ -1831,7 +1932,7 @@ Item {
 
                 Text {
                   objectName: "clipOcrHelp"
-                  width: infoColumn.width
+                  width: parent.width
                   wrapMode: Text.WordWrap
                   textFormat: Text.PlainText
                   text: "Click a language to copy its install command. Installing needs your sudo password, so the plugin never installs anything itself."
@@ -1852,7 +1953,7 @@ Item {
                   id: ocrLangGrid
                   objectName: "clipOcrLangGrid"
                   x: Style.space(10)
-                  width: infoColumn.width - Style.space(20)
+                  width: parent.width - Style.space(20)
                   columns: 3
                   spacing: Style.spacing.xs
                   readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
@@ -1882,41 +1983,79 @@ Item {
                     }
                   }
                 }
+            }
+          }
+
+          Component {
+            id: secFilters
+            Column {
+              id: sec
+              property bool firstInColumn: false
+              property bool inWindow: false
+              width: parent ? parent.width : 0
+              spacing: Style.space(2)
 
                 // Search filters: one row per filter, the example to type on
                 // the right; combine them with text, e.g. "type:link github".
                 SettingsHeading {
                   objectName: "clipFilterHeading"
                   title: "SEARCH FILTERS"
+                  first: sec.firstInColumn
                 }
                 Repeater {
                   id: filterRows
                   model: ClipboardHistory.SEARCH_FILTER_EXAMPLES.map(function(f) { return { icon: "󰍉", label: f.label, value: f.value } })
                   delegate: infoValueRow
                 }
+            }
+          }
+
+          Component {
+            id: secShortcuts
+            Column {
+              id: sec
+              property bool firstInColumn: false
+              property bool inWindow: false
+              width: parent ? parent.width : 0
+              spacing: Style.space(2)
 
                 SettingsHeading {
                   title: "SHORTCUTS"
+
+                  first: sec.firstInColumn
                 }
                 Repeater {
                   model: [
                     { icon: "󰅍", label: "Open clipboard", value: "Alt+V · Super+Ctrl+V" },
                     { icon: "󰐃", label: "Paste pinned item N, anywhere", value: "Alt+Shift+1…9" },
-                    { icon: "󰆏", label: "Paste row N, in this popup", value: "Alt+1…9" },
+                    { icon: "󰆏", label: "Paste history item N, in this popup", value: "Alt+1…9" },
                     { icon: "󰒆", label: "Paste queue: pick rows, then paste in order", value: "Ctrl+click · Ctrl+Enter" }
                   ]
                   delegate: infoValueRow
                 }
+            }
+          }
+
+          Component {
+            id: secFeedback
+            Column {
+              id: sec
+              property bool firstInColumn: false
+              property bool inWindow: false
+              width: parent ? parent.width : 0
+              spacing: Style.space(2)
 
                 SettingsHeading {
                   title: "FEEDBACK"
+
+                  first: sec.firstInColumn
                 }
                 // Same box style as the search field.
                 BorderSurface {
                   id: feedbackBox
                   objectName: "feedbackBox"
                   x: Style.space(10)
-                  width: infoColumn.width - Style.space(20)
+                  width: parent.width - Style.space(20)
                   height: Math.max(root.rowHeight * 2, feedbackInput.contentHeight + Style.space(8))
                   color: searchBox.color
                   borderSpec: searchBox.spec
@@ -1937,8 +2076,8 @@ Item {
                     onTextChanged: if (text !== "") root.feedbackNote = ""
                     // Ctrl+Enter sends, Esc leaves the field; other keys type.
                     Keys.onPressed: function(event) {
-                      if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { root.sendFeedback(); event.accepted = true }
-                      else if (event.key === Qt.Key_Escape) { searchInput.forceActiveFocus(); event.accepted = true }
+                      if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { root.sendFeedback(feedbackInput); event.accepted = true }
+                      else if (event.key === Qt.Key_Escape) { if (sec.inWindow) settingsKeys.forceActiveFocus(); else searchInput.forceActiveFocus(); event.accepted = true }
                     }
 
                     Text {
@@ -1954,7 +2093,7 @@ Item {
 
                 Rectangle {
                   objectName: "feedbackSend"
-                  width: infoColumn.width
+                  width: parent.width
                   height: root.rowHeight
                   radius: root.cornerRadius
                   color: feedbackSendMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent"
@@ -1982,11 +2121,9 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.sendFeedback()
+                    onClicked: root.sendFeedback(feedbackInput)
                   }
                 }
-                Item { width: 1; height: Style.space(6) }
-              }
             }
           }
 
@@ -1997,7 +2134,7 @@ Item {
             Rectangle {
               required property var modelData
               required property int index
-              width: infoColumn.width
+              width: parent ? parent.width : 0
               height: root.rowHeight
               radius: root.cornerRadius
               readonly property bool current: root.infoIndex === root.infoActions.indexOf(modelData.key)
@@ -2063,7 +2200,7 @@ Item {
             id: infoValueRow
             Item {
               required property var modelData
-              width: infoColumn.width
+              width: parent ? parent.width : 0
               height: root.rowHeight
 
               Text {
@@ -2421,7 +2558,8 @@ Item {
                       }
 
                       Item {
-                        visible: !row.showActions && !row.armed && row.queueNo === 0 && row.slot <= 9 && root.filterText === ""
+                        readonly property string hint: ClipboardHistory.slotHint(row.pinned, row.slot, root.pinnedCount)
+                        visible: !row.showActions && !row.armed && row.queueNo === 0 && hint !== "" && root.filterText === ""
                         width: visible ? slotHint.implicitWidth + Style.space(6) : 0
                         height: actions.height
 
@@ -2430,7 +2568,7 @@ Item {
                           objectName: "clipSlotHint"
                           anchors.left: parent.left
                           anchors.verticalCenter: parent.verticalCenter
-                          text: "Alt+" + row.slot
+                          text: parent.hint
                           color: Qt.darker(root.foreground, 1.5)
                           font.family: root.fontFamily
                           font.pixelSize: Style.font.body
@@ -2614,8 +2752,8 @@ Item {
                   // "Clear history (162 items)" when it fits next to the
                   // incognito/phone/gear buttons with room to spare, else
                   // "Clear history (162)"; see ClipboardHistory.clearLabel.
-                  text: ClipboardHistory.clearLabel(root.history.length, clearLongMetrics.advanceWidth,
-                    Math.max(0, (phoneButton.visible ? phoneButton.x : gearButton.x) - incognitoSwitch.width - Style.space(8) - Style.space(16)),
+                  text: ClipboardHistory.clearLabel(root.unpinnedCount, clearLongMetrics.advanceWidth,
+                    Math.max(0, (phoneButton.visible ? phoneButton.x : windowSettingsButton.x) - incognitoSwitch.width - Style.space(8) - Style.space(16)),
                     Style.space(24))
                   color: root.foreground
                   font.family: root.fontFamily
@@ -2625,7 +2763,7 @@ Item {
                 TextMetrics {
                   id: clearLongMetrics
                   font: clearLabel.font
-                  text: ClipboardHistory.clearLabelText(root.history.length, true)
+                  text: ClipboardHistory.clearLabelText(root.unpinnedCount, true)
                 }
 
                 MouseArea {
@@ -2640,7 +2778,7 @@ Item {
               // Incognito on/off switch (also Ctrl+I, or right-click the bar icon).
               Rectangle {
                 id: incognitoSwitch
-                anchors.right: phoneButton.visible ? phoneButton.left : gearButton.left
+                anchors.right: phoneButton.visible ? phoneButton.left : windowSettingsButton.left
                 anchors.rightMargin: Style.space(8)
                 width: incognitoRow.implicitWidth + Style.space(16)
                 height: root.footerRowHeight
@@ -2696,7 +2834,7 @@ Item {
             Rectangle {
               id: phoneButton
               visible: root.phoneIcon !== ""
-              anchors.right: gearButton.left
+              anchors.right: windowSettingsButton.left
               anchors.rightMargin: Style.space(8)
               anchors.top: parent.top
               width: root.footerRowHeight
@@ -2707,7 +2845,10 @@ Item {
               Text {
                 anchors.centerIn: parent
                 textFormat: Text.PlainText
-                text: root.phoneIcon === "online" ? "󰄜" : "󰥐"
+                // 1.26.0: connected = phone with a check (nf-md-cellphone_check),
+                // else the crossed-out phone; colour as before.
+                objectName: "phoneGlyph"
+                text: ClipboardHistory.phoneGlyph(root.phoneIcon)
                 color: root.phoneIcon === "paused" ? root.accent
                   : (root.phoneIcon === "online" ? root.foreground : root.dimText)
                 font.family: root.fontFamily
@@ -2725,6 +2866,42 @@ Item {
               PanelToolTip {
                 visible: phoneMouse.containsMouse
                 text: ClipboardHistory.phoneTooltip(root.phoneIcon, root.phoneName)
+              }
+            }
+
+            // 1.26.0 try-out: settings in their own tiling window (like Flux),
+            // next to the gear (settings inside this popup), to compare both.
+            Rectangle {
+              id: windowSettingsButton
+              objectName: "windowSettingsButton"
+              anchors.right: gearButton.left
+              anchors.rightMargin: Style.space(8)
+              anchors.top: parent.top
+              width: root.footerRowHeight
+              height: root.footerRowHeight
+              radius: root.cornerRadius
+              color: windowSettingsMouse.containsMouse ? Util.alpha(root.foreground, 0.10) : Util.alpha(root.foreground, 0.04)
+
+              Text {
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: "󰏌"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.icon
+              }
+
+              MouseArea {
+                id: windowSettingsMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.openSettingsWindow()
+              }
+
+              PanelToolTip {
+                visible: windowSettingsMouse.containsMouse
+                text: "Settings in a window"
               }
             }
 
@@ -2758,7 +2935,105 @@ Item {
 
               PanelToolTip {
                 visible: gearMouse.containsMouse
-                text: "Settings"
+                text: "Settings in this popup"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 1.26.0 try-out: settings window, about 900 x 650, two columns of the
+  // same section Components the popup page uses (left: everyday settings,
+  // shortcuts and feedback; right: OCR languages and search filters). Title "Nice Clipboard settings", class
+  // org.quickshell, like Flux's window.
+  readonly property var settingsWindowRef: settingsWindow
+  FloatingWindow {
+    id: settingsWindow
+    objectName: "settingsWindow"
+    visible: false
+    title: "Nice Clipboard settings"
+    implicitWidth: 900
+    implicitHeight: 650
+    color: root.background
+
+    Item {
+      id: settingsKeys
+      objectName: "settingsWindowContent"
+      anchors.fill: parent
+      focus: true
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape) { settingsWindow.visible = false; event.accepted = true }
+        else { root.handleInfoKey(event); event.accepted = true }
+      }
+
+      Text {
+        id: settingsWindowTitle
+        x: Style.spacing.panelPadding
+        y: Style.spacing.panelPadding
+        textFormat: Text.PlainText
+        text: "Nice Clipboard settings"
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.title
+        font.bold: true
+      }
+
+      Flickable {
+        id: settingsWindowFlick
+        objectName: "settingsWindowFlick"
+        anchors.fill: parent
+        anchors.topMargin: settingsWindowTitle.y + settingsWindowTitle.height + Style.spacing.panelGap
+        anchors.leftMargin: Style.spacing.panelPadding
+        anchors.rightMargin: Style.spacing.panelPadding
+        anchors.bottomMargin: Style.spacing.panelPadding
+        clip: true
+        contentWidth: width
+        contentHeight: Math.max(settingsLeft.implicitHeight, settingsRight.implicitHeight)
+        boundsBehavior: Flickable.StopAtBounds
+
+        KineticScroll {
+          flickable: settingsWindowFlick
+          wheelStep: root.rowHeight * 3
+        }
+
+        Row {
+          id: settingsWindowRow
+          width: settingsWindowFlick.width
+          spacing: Style.space(28)
+          readonly property real columnWidth: (width - spacing) / 2
+
+          Column {
+            id: settingsLeft
+            objectName: "settingsLeft"
+            width: settingsWindowRow.columnWidth
+            spacing: Style.space(2)
+            Repeater {
+              model: [secGeneral, secHistory, secFlux, secShortcuts, secFeedback]
+              Loader {
+                required property var modelData
+                required property int index
+                width: settingsLeft.width
+                sourceComponent: modelData
+                onLoaded: { item.firstInColumn = index === 0; item.inWindow = true }
+              }
+            }
+          }
+
+          Column {
+            id: settingsRight
+            objectName: "settingsRight"
+            width: settingsWindowRow.columnWidth
+            spacing: Style.space(2)
+            Repeater {
+              model: [secOcr, secFilters]
+              Loader {
+                required property var modelData
+                required property int index
+                width: settingsRight.width
+                sourceComponent: modelData
+                onLoaded: { item.firstInColumn = index === 0; item.inWindow = true }
               }
             }
           }
