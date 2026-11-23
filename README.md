@@ -2,8 +2,6 @@
 
 ## TL;DR for humans
 
-**Try it live:** [roehrbacher.com/nice-clipboard](https://roehrbacher.com/nice-clipboard) <!-- live demo, link goes live once the site exists -->
-
 A clipboard history for [Omarchy](https://omarchy.org) that looks like it ships with it.
 
 - **Flux integration:** send any item to your phone, see what came from it, and incognito pauses phone sync.
@@ -66,9 +64,9 @@ imported once on first start. To hear about upstream changes, run
   window (about 900 × 650, tiled like Flux; the popup closes): a sidebar of
   sections (with "Settings" and the version on top) and one section at a time
   on the right, with its title and a short description: General (incognito,
-  click action), History (delete after, clear), Flux (phone, last sync, "Send
-  current clipboard"), Text recognition (OCR languages), Search filters,
-  Shortcuts, Feedback. ↑ ↓ pick a section, Esc closes. Closing it any other
+  click action, check for updates), History (delete after, clear), Flux (phone, last sync, "Send
+  current clipboard"), Text recognition (OCR) (its page: "Languages for text recognition (OCR)"), Search filters,
+  Shortcuts, Feedback, and a GitHub link at the bottom of the sidebar. ↑ ↓ pick a section, Esc closes. Closing it any other
   way (Super+W, the window's close button) works too; the gear opens it again.
 - **Flux state on the phone button:** a phone with a check when a phone is
   connected, a crossed-out phone otherwise (paused: accent colour). Hovering the phone action
@@ -114,8 +112,11 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
   **Copy text**; a QR link or e-mail gets the open button, a Wi-Fi QR code
   copies the password, any other QR code copies its text. Without the tools
   the buttons simply don't appear: `sudo pacman -S tesseract tesseract-data-eng tesseract-data-deu zbar`.
-- OCR languages (Settings > Text recognition, sorted by name): a click on one
-  installs it. Omarchy's floating terminal opens with the plugin's
+- OCR languages (Settings > Text recognition (OCR), sorted by name): a click on one
+  installs it. Each language shows its real size from the local pacman
+  database (`pacman -Si`, read when the settings window opens): the space on
+  disk when installed, the download size otherwise; nothing is shown when
+  pacman has no data. Omarchy's floating terminal opens with the plugin's
   `ocr-install.sh`, which first shows what it will run, e.g. "Nice Clipboard
   will install German text recognition: `sudo pacman -S --needed
   tesseract-data-deu`", and waits: Enter continues (then sudo asks for your
@@ -175,21 +176,21 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
 
 ## Feedback
 
-Settings > Feedback: type an idea, bug or wish and press Send (or
-Ctrl+Enter). The text is posted to the Nice Clipboard feedback Worker at
+Settings > Feedback: type an idea, bug or wish and press Enter or Send
+(Shift+Enter starts a new line). The text is posted to the Nice Clipboard feedback Worker at
 `https://feedback.roehrbacher.com/feedback` (a Cloudflare Worker that files it
 as an issue in a private repo; rate limited, no IP stored) and the box says
-"Feedback sent, thanks! Timon reads every message." with a green check. No browser, no GitHub account. Only the text and the plugin
-version are sent. Ctrl+Shift+Enter opens a prefilled GitHub issue in the
-browser instead. If sending fails, the text stays in the box.
+"Feedback sent, thanks! Timon reads every message." with Omarchy's check icon, on its own line under Send. No browser, no GitHub account. Only the text and the plugin
+version are sent. If sending fails, the text stays in the box. The page also
+links the [GitHub page](https://github.com/roehrbacher/Nice-Clipboard).
 
 ## Privacy
 
 History stays on this computer in `~/.local/share/timon.clipboard/`
 (folder `0700`, files `0600`). Nothing is logged, synced or sent anywhere by
-this plugin; the one exception is feedback: what you type in Settings >
+this plugin; the exceptions are feedback (what you type in Settings >
 Feedback goes to `https://feedback.roehrbacher.com/feedback`, and only when
-you press Send. Password-manager copies are never stored, and incognito mode
+you press Send) and the optional update check (off by default, see Update). Password-manager copies are never stored, and incognito mode
 stores nothing. Phone sync only happens if you run Flux yourself, and
 incognito pauses it.
 
@@ -287,11 +288,28 @@ and run `omarchy restart shell`.
 
 ## Update
 
+Omarchy menu > Update (`omarchy-update`) updates Omarchy and your packages,
+not third-party plugins. A plugin installed with `omarchy plugin add` (a git
+clone) is updated with:
+
 ```bash
 omarchy plugin update timon.clipboard && omarchy restart shell
 ```
 
-The plugin is `keepLoaded`, so code changes need a shell restart.
+(it fetches, shows the changes and asks first; while the repository is
+private this needs GitHub access). A copied install (no `.git` folder) is
+updated by copying the new version over it. The plugin is `keepLoaded`, so
+code changes need a shell restart.
+
+**Check for updates** (Settings > General, **off by default**): when on, at
+most once a day when the popup opens, `update-check.sh` asks the public
+GitHub API for the newest release (or version tag) of
+`roehrbacher/Nice-Clipboard`: an anonymous request with a fixed user agent,
+no token, nothing about you or this computer. If it is newer than the
+installed version, a small "New update available" note at the top of the
+popup says how to update (with GitHub page and Hide). If the repository
+is private, offline or has no release, nothing is shown. Saved in
+`state.json` (`updateCheck`, last check time, newest version seen).
 
 ## Uninstall
 

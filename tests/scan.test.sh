@@ -61,8 +61,13 @@ if [[ $NF == *Nerd* ]]; then
   card qrcard.png '#f6f7fb' white '#222' '#888' yes
   card qrdark.png '#11111b' '#1e1e2e' '#cdd6f4' '#7f849c' yes
   card noqr.png '#f6f7fb' white '#222' '#888' no
+  # 1.30.0: pinned to English + German. Which packs are installed changes
+  # tesseract's reading of these synthetic cards (with Spanish, "Top
+  # location" comes out as "Toplocation"), so the default pack set made this
+  # test depend on the machine. The icon-row case those packs produce is
+  # covered below with its exact TSV, independent of the installed packs.
   for f in qrcard qrdark noqr; do
-    out=$("$here/../scan.sh" "$d/$f.png"); got=$(jq -r .ocr <<<"$out")
+    out=$(OMARCHY_OCR_LANGS=eng+deu "$here/../scan.sh" "$d/$f.png"); got=$(jq -r .ocr <<<"$out")
     [[ $got == "$exp" ]] && ok "ocr $f: labels only, no icon/QR junk" || bad "ocr $f: got $(jq -c .ocr <<<"$out")"
   done
   [[ $(jq -r .qr <<<"$("$here/../scan.sh" "$d/qrcard.png")") == WIFI:* ]] && ok "qrcard: QR still read" || bad "qrcard: QR lost"
@@ -71,6 +76,10 @@ if [[ $NF == *Nerd* ]]; then
   exp=$'Order #4711 shipped on 23.10.2026, total 12,50 EUR.\nDon\'t forget: e-mail me at 9:30 (100% sure)!\nA short line'
   got=$(jq -r .ocr <<<"$("$here/../scan.sh" "$d/para.png")")
   [[ $got == "$exp" ]] && ok "ocr plain text: punctuation, numbers, one-letter word kept" || bad "ocr para: $got"
+  # Icon row read as "D le" (eng+deu+ita, measured on the XPS): both tokens dropped.
+  tsv=$'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t79\t45\t95\t25\t91.0\tDynamic\n5\t1\t1\t1\t1\t2\t183\t46\t35\t23\t92.5\tQR\n5\t1\t1\t1\t1\t3\t228\t45\t58\t20\t92.5\tCode\n5\t1\t2\t1\t1\t1\t56\t347\t17\t19\t74.6\tD\n5\t1\t2\t1\t1\t2\t106\t349\t13\t15\t88.0\tle\n5\t1\t3\t1\t1\t1\t40\t400\t20\t19\t90.0\tok\n'
+  got=$(awk -f "$here/../ocr-clean.awk" <<<"$tsv")
+  [[ $got == $'Dynamic QR Code\nok' ]] && ok "ocr-clean: two-icon row 'D le' dropped, a real short line kept" || bad "ocr-clean icon row: $(printf %q "$got")"
   ls "${XDG_RUNTIME_DIR:-/tmp}"/timon-clipboard-scan.* >/dev/null 2>&1 && bad "masked temp file left behind" || ok "masked temp file removed"
 else
   echo "skip: 1.20.0 OCR cards need JetBrainsMono Nerd Font"

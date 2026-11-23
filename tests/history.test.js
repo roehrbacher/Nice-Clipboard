@@ -704,4 +704,38 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.strictEqual(H.ocrDemoSuggestion(["eng"], "ita").code, "ita")
   assert.strictEqual(H.ocrDemoSuggestion(["eng", "ita"], "ita").code, "deu", "installed one is skipped")
   console.log("ok 1.28.0/1.29.0 OCR preview, sorted languages, install argv, Alt+Shift slots, feedback, demo banner")
+
+  // 1.30.0: no GitHub fallback in feedback notes, Enter sends
+  assert.ok(!H.feedbackResult(0, '<html>').note.includes("GitHub"), "no Ctrl+Shift+Enter hint")
+  assert.strictEqual(H.feedbackResult(0, '<html>').ok, false)
+  assert.strictEqual(H.feedbackKey(0x01000004, false, false), "send", "Enter")
+  assert.strictEqual(H.feedbackKey(0x01000005, false, false), "send", "keypad Enter")
+  assert.strictEqual(H.feedbackKey(0x01000004, true, false), "newline", "Shift+Enter")
+  assert.strictEqual(H.feedbackKey(0x01000004, false, true), "send", "Ctrl+Enter still sends")
+  assert.strictEqual(H.feedbackKey(0x41, false, false), "", "letters type")
+  assert.strictEqual(H.feedbackUrl, undefined)
+  // 1.30.0: OCR pack sizes from pacman, never guessed
+  const sz = { deu: { download: "5.94 MiB", installed: "14.72 MiB" }, deu_frak: { download: "752.64 KiB", installed: "1932.36 KiB" }, bad: { download: "?", installed: "" } }
+  assert.strictEqual(H.ocrSizeLabel(sz, "deu", true), "15 MB")
+  assert.strictEqual(H.ocrSizeLabel(sz, "deu", false), "6.2 MB")
+  assert.strictEqual(H.ocrSizeLabel(sz, "deu_frak", false), "0.8 MB")
+  assert.strictEqual(H.ocrSizeLabel(sz, "fra", false), "", "unknown = nothing")
+  assert.strictEqual(H.ocrSizeLabel(sz, "bad", false), "")
+  assert.strictEqual(H.ocrSizeLabel({}, "deu", true), "")
+  assert.strictEqual(H.ocrSizeTip(sz, "deu"), "Download 6.2 MB, 15 MB on disk")
+  assert.strictEqual(H.pacmanBytes("1.50 GiB"), 1.5 * 1073741824)
+  // 1.30.0: update check helpers
+  assert.strictEqual(H.versionNewer("1.31.0", "1.30.0"), true)
+  assert.strictEqual(H.versionNewer("v1.30.1", "1.30.0"), true)
+  assert.strictEqual(H.versionNewer("1.30.0", "1.30.0"), false)
+  assert.strictEqual(H.versionNewer("1.9.0", "1.30.0"), false, "numeric, not string compare")
+  assert.strictEqual(H.versionNewer("", "1.30.0"), false)
+  assert.strictEqual(H.versionNewer("latest", "1.30.0"), false)
+  assert.strictEqual(H.updateCheckDue(0, 5e9), true)
+  assert.strictEqual(H.updateCheckDue(1e9, 1e9 + 3600), false, "not twice a day")
+  assert.strictEqual(H.updateCheckDue(1e9, 1e9 + 86400), true)
+  assert.strictEqual(H.updateCheckDue(1e9, 1e9 - 10), true, "clock went back")
+  assert.ok(H.updateHowTo(true).includes("omarchy plugin update timon.clipboard"))
+  assert.ok(H.updateHowTo(false).includes("GitHub page"))
+  console.log("ok 1.30.0 feedback keys, OCR sizes, update check")
 }

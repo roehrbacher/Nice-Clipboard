@@ -26,6 +26,10 @@ function flush(   i, a, b, s, sum, cnt, chars) {
   a = 1; b = n
   while (a <= b && edgeJunk(a, a < b ? a + 1 : 0)) a++
   while (b >= a && edgeJunk(b, b > a ? b - 1 : 0)) b--
+  # 1.30.0: what is left after dropping icons is one or two letters: that
+  # was an icon too (a row of two icons read as "D le" with an Italian or
+  # Spanish model installed). A real short line has no icon trimmed off.
+  if ((a > 1 || b < n) && b == a && alnum(W[a]) <= 2) { n = 0; return }
   s = ""; sum = 0; cnt = 0; chars = 0
   for (i = a; i <= b; i++) { s = s (s == "" ? "" : " ") W[i]; sum += C[i]; cnt++; chars += alnum(W[i]) }
   if (cnt > 0 && chars >= 2 && (sum / cnt >= 55 || wordlike(W[a]))) {

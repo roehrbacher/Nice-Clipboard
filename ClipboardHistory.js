@@ -590,6 +590,54 @@ function ocrLanguageRows(installed) {
   }).sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0 })
 }
 
+// 1.30.0: update check (off by default). "1.31.0" > "1.30.0"?
+function versionNewer(a, b) {
+  var re = /^v?(\d+)\.(\d+)\.(\d+)$/
+  var x = re.exec(String(a || "").trim()), y = re.exec(String(b || "").trim())
+  if (!x || !y) return false
+  for (var i = 1; i <= 3; i++) {
+    var d = parseInt(x[i], 10) - parseInt(y[i], 10)
+    if (d) return d > 0
+  }
+  return false
+}
+// At most once a day (also after a failed or empty check).
+function updateCheckDue(lastSec, nowSec) {
+  var last = Number(lastSec) || 0
+  return !(last > 0 && nowSec - last < 86400 && nowSec >= last)
+}
+// How to update, for the notice in the popup.
+function updateHowTo(isGit) {
+  return isGit
+    ? "Update: run  omarchy plugin update timon.clipboard  in a terminal."
+    : "Update: download the new version from the GitHub page and copy it into ~/.config/omarchy/plugins/timon.clipboard, then restart the shell."
+}
+
+// 1.30.0: pack sizes from pacman ("5.94 MiB", "752.64 KiB") as MB for
+// the language pills: the disk space once installed, the download before.
+// "" when pacman gave nothing for it (never a guessed number).
+function pacmanBytes(v) {
+  var m = /^([0-9]+(?:\.[0-9]+)?)\s*(B|KiB|MiB|GiB)$/.exec(String(v || "").trim())
+  if (!m) return -1
+  return parseFloat(m[1]) * { B: 1, KiB: 1024, MiB: 1048576, GiB: 1073741824 }[m[2]]
+}
+function megabytes(bytes) {
+  if (!(bytes >= 0)) return ""
+  var mb = bytes / 1e6
+  return (mb < 10 ? (Math.round(mb * 10) / 10).toFixed(1) : String(Math.round(mb))) + " MB"
+}
+function ocrSizeLabel(sizes, code, installed) {
+  var s = sizes && sizes[code]
+  if (!s) return ""
+  return megabytes(pacmanBytes(installed ? s.installed : s.download))
+}
+function ocrSizeTip(sizes, code) {
+  var s = sizes && sizes[code]
+  if (!s) return ""
+  var d = megabytes(pacmanBytes(s.download)), i = megabytes(pacmanBytes(s.installed))
+  return d && i ? "Download " + d + ", " + i + " on disk" : ""
+}
+
 // 1.29.0: runs the plugin's own ocr-install.sh in Omarchy's floating
 // terminal (app id org.omarchy.terminal floats via Omarchy's window rules).
 // The script shows the exact pacman command and waits for Enter before
@@ -1275,6 +1323,12 @@ function ocrDismissedOf(v) {
 function feedbackPayload(text, version) {
   return JSON.stringify({ message: String(text || "").trim(), version: String(version || ""), website: "" })
 }
+// 1.30.0: keys in the feedback field. Enter sends, Shift+Enter is a new
+// line (Ctrl+Enter keeps sending, the old key); everything else types.
+function feedbackKey(key, shift, ctrl) {
+  if (key !== 0x01000004 && key !== 0x01000005) return ""
+  return shift && !ctrl ? "newline" : "send"
+}
 // curl exit code + response body -> the note under the feedback box, and
 // whether it went through (the text is kept when it did not).
 function feedbackResult(exitCode, body) {
@@ -1284,7 +1338,7 @@ function feedbackResult(exitCode, body) {
   if (r && r.error === "slow down") return { ok: false, note: "Too many: try again in a minute" }
   if (r && r.error === "too long") return { ok: false, note: "Too long (max 4000 characters)" }
   if (exitCode === 6 || exitCode === 7 || exitCode === 28) return { ok: false, note: "Not sent: offline? Text kept" }
-  return { ok: false, note: "Not sent · Ctrl+Shift+Enter: GitHub" }
+  return { ok: false, note: "Not sent: please try again later. Your text is kept." }
 }
 // feedback curl runs with -w '\n%{exitcode}': the last line is curl's exit
 // code, the rest is the Worker's JSON reply.
@@ -1409,6 +1463,13 @@ if (typeof module !== "undefined") {
     queueOnPick: queueOnPick,
     ocrInstallCommand: ocrInstallCommand,
     ocrLanguageRows: ocrLanguageRows,
+    pacmanBytes: pacmanBytes,
+    megabytes: megabytes,
+    ocrSizeLabel: ocrSizeLabel,
+    ocrSizeTip: ocrSizeTip,
+    versionNewer: versionNewer,
+    updateCheckDue: updateCheckDue,
+    updateHowTo: updateHowTo,
     OCR_LANGUAGES: OCR_LANGUAGES,
     firstPinnedIndex: firstPinnedIndex,
     queueItemKeys: queueItemKeys,
@@ -1430,6 +1491,7 @@ if (typeof module !== "undefined") {
     globalKeysSummary: globalKeysSummary,
     ocrDismissedOf: ocrDismissedOf,
     feedbackPayload: feedbackPayload,
+    feedbackKey: feedbackKey,
     feedbackResult: feedbackResult,
     feedbackResultFromCurl: feedbackResultFromCurl
   }

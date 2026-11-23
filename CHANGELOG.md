@@ -2,6 +2,16 @@
 
 Newest first. Older history is in the git log.
 
+## 1.30.0
+
+- Text recognition: each OCR language shows its real size, read from the local pacman database (`scan.sh --sizes`, `pacman -Si`, when the settings window opens): space on disk when installed, download size otherwise (e.g. "German · 15 MB"; both in the tooltip). No size is shown when pacman has none. The sidebar entry is "Text recognition (OCR)", its page "Languages for text recognition (OCR)".
+- Feedback: the confirmation sits on its own wrapping line under Send (it was cut off in a half-width window), with Omarchy's own check icon in the accent colour instead of a custom green one. Enter sends, Shift+Enter is a new line (Ctrl+Enter still sends). The Ctrl+Shift+Enter "open a GitHub issue" fallback is removed (code, hints, README). New description: "Send feedback straight to the developer from here, or check out the GitHub page." with the link.
+- GitHub link at the bottom of the settings sidebar (github.com/roehrbacher/Nice-Clipboard).
+- Check for updates (Settings > General), **off by default**: at most once a day, when the popup opens, `update-check.sh` asks the public GitHub API (anonymous, nothing personal sent) for the newest release or version tag; a newer one shows a small "New update available" note in the popup with how to update. Private repository, offline or no release: nothing shown. Omarchy menu > Update does not update third-party plugins (`omarchy-update` has no plugin step; `omarchy plugin update <id>` is CLI only and needs a git install); README > Update says so.
+- OCR fix: a row of two icons read as "D le" (Italian / Spanish models installed) is dropped like other icon junk (`ocr-clean.awk`); `scan.test.sh` pins its sample cards to English + German so other installed languages don't change the expected text, plus a fixed TSV case for the icon row.
+- README: the online demo link is removed.
+- Tests: `run-v130.sh` (update check off by default / on against a stub, OCR sizes, sidebar link, feedback note at 940 and 620 px), `ocr-sizes.test.sh`, `update-check.test.sh` (local fake API, never GitHub), `tst_feedback.qml` (Enter / Shift+Enter).
+
 ## 1.29.0
 
 - Alt+Shift+1…9 and Alt+Shift+0 are 10 slots, the same everywhere and in the popup: your pinned items first (in their order), then the newest history items fill the rest. With 9 pins Alt+Shift+0 is the newest history item; with 4 pins Alt+Shift+5…9, 0 are history items 1…6. Every slotted row shows its "Alt+Shift+N". Plain Alt+N in the popup no longer does anything. Keys are read by keycode, so the German layout's Shift+1 = "!" works.

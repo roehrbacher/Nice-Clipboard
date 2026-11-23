@@ -12,6 +12,7 @@ IMAGE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/timon.clipboard/images"
 # OMARCHY_OCR_LANGS (e.g. "eng+deu") picks them; without it every installed
 # pack is used (English first, at most 3, so a scan stays quick).
 #   scan.sh --langs     print {"installed":[...],"used":"eng+deu","env":"...","hints":[...]}
+#   scan.sh --sizes     language pack sizes from pacman (see below)
 ocr_installed() { tesseract --list-langs 2>/dev/null | tail -n +2 | grep -vxE 'osd|equ|snum' | sort -u; }
 ocr_langs() {
   local have want picked=()
@@ -54,6 +55,20 @@ if [[ ${1:-} == --langs ]]; then
   fi
   jq -cn --arg inst "$(ocr_installed)" --arg used "$(ocr_langs)" --arg env "${OMARCHY_OCR_LANGS:-}" --arg hints "$hints" \
     '{installed: ($inst | split("\n") | map(select(. != ""))), used: $used, env: $env, hints: ($hints | split("\n") | map(select(. != "")))}'
+  exit 0
+fi
+# 1.30.0: real sizes of the tesseract language packs, read from the local
+# pacman sync database (pacman -Si; no network, no root, nothing installed):
+#   scan.sh --sizes     print {"deu":{"download":"5.94 MiB","installed":"14.72 MiB"},...}
+# {} when pacman or the packages are missing.
+if [[ ${1:-} == --sizes ]]; then
+  pacman=${NICE_CLIPBOARD_PACMAN:-pacman}
+  command -v "$pacman" >/dev/null || { echo '{}'; exit 0; }
+  mapfile -t pkgs < <(LC_ALL=C "$pacman" -Ssq '^tesseract-data-' 2>/dev/null | grep -E '^tesseract-data-[a-z_]+$')
+  ((${#pkgs[@]})) || { echo '{}'; exit 0; }
+  LC_ALL=C timeout 10 "$pacman" -Si "${pkgs[@]}" 2>/dev/null |
+    awk -F' *: ' '/^Name/ { n = $2 } /^Download Size/ { d = $2 } /^Installed Size/ { if (n != "") print n "\t" d "\t" $2; n = "" }' |
+    jq -cRn '[inputs | split("\t") | select(length == 3) | {key: (.[0] | sub("^tesseract-data-"; "")), value: {download: .[1], installed: .[2]}}] | from_entries'
   exit 0
 fi
 img=${1:-}

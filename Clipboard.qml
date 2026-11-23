@@ -119,6 +119,9 @@ Item {
   property string currentClipKey: ""
   // OCR languages for the settings view (scan.sh --langs).
   property var ocrInfo: ({ installed: [], used: "", env: "", hints: [] })
+  // 1.30.0: language pack sizes from the local pacman database (scan.sh
+  // --sizes), read once per settings window; {} = show no sizes.
+  property var ocrSizes: ({})
   // 1.27.0: "Looks like you also use German, install OCR for it?" Languages
   // come from the locale, keyboard layouts and dictionaries (scan.sh
   // --langs "hints"); dismissed ones are kept in state.json.
@@ -259,6 +262,7 @@ Item {
     mapsCheckProc.running = true
     // 1.28.0: the OCR banner needs the languages on every open (cheap).
     if (!ocrLangProc.running) ocrLangProc.running = true
+    root.maybeCheckUpdate()
     root.opened = true
     root.filterText = ""
     root.searchExpanded = false
@@ -281,6 +285,7 @@ Item {
     root.nowSec = Math.floor(Date.now() / 1000)
     if (root.fluxPresent && !root.fluxPaused && !statusProc.running) statusProc.running = true
     if (!ocrLangProc.running) ocrLangProc.running = true
+    if (Object.keys(root.ocrSizes).length === 0 && !ocrSizesProc.running) ocrSizesProc.running = true
     if (section !== undefined) {
       var i = root.settingsSections.map(function(x) { return x.key }).indexOf(section)
       if (i >= 0) root.settingsSection = i
@@ -324,54 +329,80 @@ Item {
     root.setKeepDays(list[i])
   }
 
-  // Feedback (1.24.0): opens a prefilled GitHub issue (label "feedback") in
-  // the browser; the plugin needs no token, GitHub uses the browser login.
-  readonly property string feedbackRepo: "roehrbacher/Nice-Clipboard"
+  // The public project page (settings sidebar, Feedback description).
+  readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.29.0"
+  readonly property string pluginVersion: "1.30.0"
   property string feedbackNote: ""
-  // 1.29.0: true after the Worker confirmed; the note gets a green check.
+  // True after the Worker confirmed; the note then gets Omarchy's check
+  // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
   property bool feedbackSent: false
-  readonly property color successColor: "#4caf50"
   // Direct feedback (1.27.0, on since 1.28.0): Send posts the text to the
   // Nice Clipboard feedback Worker, which files it as an issue in a private
-  // repo (rate limited, no IP kept), and shows "Feedback sent" with a green check: no browser,
-  // no GitHub account. Only when Send is pressed. Empty = the prefilled
-  // GitHub issue instead; Ctrl+Shift+Enter always opens GitHub.
+  // repo (rate limited, no IP kept). No browser, no GitHub account; only
+  // when Send (or Enter) is pressed. 1.30.0: the "open a GitHub issue"
+  // fallback (Ctrl+Shift+Enter) is gone.
   readonly property string feedbackEndpoint: "https://feedback.roehrbacher.com/feedback"
   property var feedbackPendingInput: null
-  function feedbackUrl(text) {
-    var t = String(text || "").trim()
-    var first = t.split("\n")[0]
-    var title = "Feedback: " + (first.length > 60 ? first.slice(0, 57) + "..." : first)
-    var body = t + "\n\n---\nSent from Nice Clipboard settings (" + root.pluginVersion + ")"
-    return "https://github.com/" + root.feedbackRepo + "/issues/new?labels=feedback&title="
-      + encodeURIComponent(title) + "&body=" + encodeURIComponent(body)
-  }
   // input: the feedback field in the settings window.
-  // viaGithub (Ctrl+Shift+Enter): always the browser link.
-  function sendFeedback(input, viaGithub) {
+  function sendFeedback(input) {
     var t = input ? input.text.trim() : ""
-    if (t === "") { root.feedbackNote = "Write something first"; return false }
-    if (root.feedbackEndpoint !== "" && viaGithub !== true) {
-      if (feedbackProc.running) return false
-      feedbackProc.payload = ClipboardHistory.feedbackPayload(t, root.pluginVersion)
-      root.feedbackPendingInput = input
-      root.feedbackNote = "Sending…"
-      root.feedbackSent = false
-      feedbackProc.running = true
-      return true
-    }
-    Quickshell.execDetached(["xdg-open", root.feedbackUrl(t)])
-    input.text = ""
-    root.feedbackNote = "Opened in your browser: submit it there"
+    if (t === "") { root.feedbackNote = "Write something first"; root.feedbackSent = false; return false }
+    if (feedbackProc.running) return false
+    feedbackProc.payload = ClipboardHistory.feedbackPayload(t, root.pluginVersion)
+    root.feedbackPendingInput = input
+    root.feedbackNote = "Sending…"
+    root.feedbackSent = false
+    feedbackProc.running = true
     return true
+  }
+  function openUrl(url) {
+    if (!/^https:\/\//.test(String(url))) return
+    Quickshell.execDetached(["xdg-open", String(url)])
+  }
+
+  // 1.30.0: optional update check, OFF by default (state "updateCheck"):
+  // at most once a day, when the popup opens, update-check.sh asks the
+  // public GitHub API for the newest release (anonymous, nothing personal
+  // sent). Newer than pluginVersion = a small notice above the list. While
+  // the repository is private nothing is found and nothing is shown.
+  property bool updateCheck: false
+  property real updateLastCheck: 0
+  property string updateLatest: ""
+  property bool updateGit: false
+  property string updateDismissed: ""
+  readonly property string updateScript: pluginDir + "/update-check.sh"
+  readonly property bool updateAvailable: root.updateCheck && root.updateLatest !== ""
+      && root.updateLatest !== root.updateDismissed && ClipboardHistory.versionNewer(root.updateLatest, root.pluginVersion)
+  function maybeCheckUpdate() {
+    if (!root.updateCheck || updateProc.running) return
+    var now = Math.floor(Date.now() / 1000)
+    if (!ClipboardHistory.updateCheckDue(root.updateLastCheck, now)) return
+    root.updateLastCheck = now
+    root.writeState()
+    updateProc.running = true
+  }
+  Process {
+    id: updateProc
+    command: [root.updateScript]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var st = null
+        try { st = JSON.parse(String(text)) } catch (e) { st = null }
+        if (!st) return
+        root.updateGit = st.git === true
+        root.updateLatest = /^[0-9]+\.[0-9]+\.[0-9]+$/.test(String(st.latest || "")) ? String(st.latest) : ""
+        root.writeState()
+      }
+    }
   }
 
   // Clickable settings rows (incognito, clear history) in the window.
   // Clear history asks in the popup (its confirm lives there).
   function runSettingsAction(name) {
     if (name === "globalKeys") { root.globalKeys = !root.globalKeys; root.writeState(); root.applyGlobalKeys(); return }
+    if (name === "updateCheck") { root.updateCheck = !root.updateCheck; if (!root.updateCheck) root.updateLatest = ""; root.writeState(); root.maybeCheckUpdate(); return }
     if (name === "incognito") root.setPrivate(!root.privateMode, false)
     else if (name === "clear") { root.open("{}"); root.requestClearHistory() }
   }
@@ -483,7 +514,8 @@ Item {
   }
 
   function writeState() {
-    stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction, ocrDismissed: root.ocrDismissed, globalKeys: root.globalKeys }) + "\n")
+    stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction, ocrDismissed: root.ocrDismissed, globalKeys: root.globalKeys,
+      updateCheck: root.updateCheck, updateLastCheck: root.updateLastCheck, updateLatest: root.updateLatest, updateGit: root.updateGit, updateDismissed: root.updateDismissed }) + "\n")
   }
 
   function loadState(raw) {
@@ -492,6 +524,11 @@ Item {
     root.privateMode = st.private === true
     root.clickAction = ClipboardHistory.clickActionOf(st.clickAction)
     root.ocrDismissed = ClipboardHistory.ocrDismissedOf(st.ocrDismissed)
+    root.updateCheck = st.updateCheck === true
+    root.updateLastCheck = Number(st.updateLastCheck) || 0
+    root.updateLatest = root.updateCheck && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(String(st.updateLatest || "")) ? String(st.updateLatest) : ""
+    root.updateGit = st.updateGit === true
+    root.updateDismissed = String(st.updateDismissed || "")
     var gk = st.globalKeys !== false
     if (gk !== root.globalKeys || !root.globalKeysApplied) { root.globalKeys = gk; root.applyGlobalKeys() }
     var days = ClipboardHistory.keepDaysOf(st.keepDays)
@@ -1277,6 +1314,18 @@ Item {
       }
     }
   }
+  Process {
+    id: ocrSizesProc
+    command: [root.scanScript, "--sizes"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var st = null
+        try { st = JSON.parse(String(text)) } catch (e) { st = null }
+        if (st && typeof st === "object" && !Array.isArray(st)) root.ocrSizes = st
+      }
+    }
+  }
   Timer {
     id: ocrWatchTimer
     interval: 3000
@@ -1780,6 +1829,31 @@ Item {
                     }
                   }
                 }
+
+                // 1.30.0: update check, off by default.
+                Item { width: 1; height: Style.space(8) }
+                Repeater {
+                  model: [
+                    { key: "updateCheck", label: "󰚰  Check for updates: " + (root.updateCheck ? "on" : "off"), value: "", hint: "" }
+                  ]
+                  delegate: infoActionRow
+                }
+                Text {
+                  objectName: "updateCheckStatus"
+                  x: Style.space(10)
+                  bottomPadding: Style.space(8)
+                  width: parent.width - Style.space(20)
+                  wrapMode: Text.Wrap
+                  textFormat: Text.PlainText
+                  text: !root.updateCheck
+                    ? "Off. When on, Nice Clipboard asks GitHub once a day for the newest published version (an anonymous request, nothing about you or this computer is sent) and shows a note in the popup when there is one."
+                    : (root.updateAvailable ? "Version " + root.updateLatest + " is available (you have " + root.pluginVersion + ")."
+                      : (root.updateLatest !== "" ? "Up to date (" + root.pluginVersion + "). Checked once a day."
+                        : "On: checked once a day when the popup opens. No published version found yet."))
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
             }
           }
 
@@ -1979,6 +2053,7 @@ Item {
                   wrapMode: Text.WordWrap
                   textFormat: Text.PlainText
                   text: "Click a language to install it: a terminal opens and asks for your password (official Arch package)."
+                        + (Object.keys(root.ocrSizes).length ? " Sizes from pacman: space on disk when installed, download size otherwise." : "")
                   color: root.dimText
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -2011,7 +2086,8 @@ Item {
                       readonly property string cmd: modelData.cmd
                       readonly property bool installed: modelData.installed
                       width: ocrLangGrid.cellWidth
-                      text: modelData.name
+                      readonly property string size: ClipboardHistory.ocrSizeLabel(root.ocrSizes, code, installed)
+                      text: modelData.name + (size !== "" ? " · " + size : "")
                       iconText: installed ? "󰄬" : ""
                       fontSize: Style.font.caption
                       iconSize: Style.font.caption
@@ -2021,7 +2097,8 @@ Item {
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
                       active: installed
-                      tooltipText: installed ? "Installed" : (root.ocrInstalling === code ? "Installing… (see the terminal)" : "Click to install (pacman, asks for your password)")
+                      readonly property string sizeTip: ClipboardHistory.ocrSizeTip(root.ocrSizes, code)
+                      tooltipText: (installed ? "Installed" : (root.ocrInstalling === code ? "Installing… (see the terminal)" : "Click to install (pacman, asks for your password)")) + (sizeTip !== "" ? " · " + sizeTip : "")
                       onClicked: root.installOcrLanguage(modelData)
                     }
                   }
@@ -2114,9 +2191,12 @@ Item {
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.body
                     onTextChanged: if (text !== "") { root.feedbackNote = ""; root.feedbackSent = false }
-                    // Ctrl+Enter sends, Esc leaves the field; other keys type.
+                    // 1.30.0: Enter sends, Shift+Enter is a new line, Esc
+                    // leaves the field; other keys type.
                     Keys.onPressed: function(event) {
-                      if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { root.sendFeedback(feedbackInput, (event.modifiers & Qt.ShiftModifier) !== 0); event.accepted = true }
+                      var k = ClipboardHistory.feedbackKey(event.key, event.modifiers & Qt.ShiftModifier, event.modifiers & Qt.ControlModifier)
+                      if (k === "send") { root.sendFeedback(feedbackInput); event.accepted = true }
+                      else if (k === "newline") { feedbackInput.insert(feedbackInput.cursorPosition, "\n"); event.accepted = true }
                       else if (event.key === Qt.Key_Escape) { if (root.settingsKeysRef) root.settingsKeysRef.forceActiveFocus(); event.accepted = true }
                     }
 
@@ -2148,30 +2228,15 @@ Item {
                     font.pixelSize: Style.font.body
                   }
                   Text {
-                    objectName: "feedbackSentIcon"
-                    visible: root.feedbackSent
-                    anchors.right: feedbackNoteText.left
-                    anchors.rightMargin: Style.space(6)
-                    anchors.verticalCenter: parent.verticalCenter
-                    textFormat: Text.PlainText
-                    text: "󰗠"
-                    color: root.successColor
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.icon
-                  }
-                  Text {
-                    id: feedbackNoteText
-                    objectName: "feedbackNote"
                     anchors.right: parent.right
                     anchors.rightMargin: Style.space(10)
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, parent.width - Style.space(190))
-                    horizontalAlignment: Text.AlignRight
-                    elide: Text.ElideLeft
-                    text: root.feedbackNote !== "" ? root.feedbackNote : (root.feedbackEndpoint !== "" ? "Ctrl+Enter sends · Ctrl+Shift+Enter: GitHub" : "Ctrl+Enter · opens a GitHub issue")
-                    color: root.feedbackSent ? root.foreground : root.dimText
+                    textFormat: Text.PlainText
+                    text: "Enter sends · Shift+Enter: new line"
+                    color: root.dimText
                     font.family: root.fontFamily
-                    font.pixelSize: root.feedbackSent ? Style.font.body : Style.font.caption
+                    font.pixelSize: Style.font.caption
+                    visible: parent.width > Style.space(420)
                   }
                   MouseArea {
                     id: feedbackSendMouse
@@ -2179,6 +2244,37 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.sendFeedback(feedbackInput)
+                  }
+                }
+
+                // 1.30.0: the result on its own line under Send, wrapping,
+                // so it fits at any window width (was cut off on the right).
+                Row {
+                  objectName: "feedbackNoteRow"
+                  visible: root.feedbackNote !== ""
+                  x: Style.space(10)
+                  width: parent.width - Style.space(20)
+                  spacing: Style.space(6)
+                  topPadding: Style.space(2)
+                  Text {
+                    id: feedbackSentIcon
+                    objectName: "feedbackSentIcon"
+                    visible: root.feedbackSent
+                    textFormat: Text.PlainText
+                    text: "󰄬"
+                    color: root.accent
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                  }
+                  Text {
+                    objectName: "feedbackNote"
+                    width: parent.width - (feedbackSentIcon.visible ? feedbackSentIcon.width + parent.spacing : 0)
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
+                    text: root.feedbackNote
+                    color: root.feedbackSent ? root.foreground : root.dimText
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
                   }
                 }
             }
@@ -2364,11 +2460,92 @@ Item {
                 // 1.28.0: first-run hint above the list: a missing OCR
                 // language matching the locale / keyboard layout. Install
                 // or Not now (Not now = the same dismissal as in settings).
-                header: Item {
+                header: Column {
+                  objectName: "clipListHeader"
+                  width: ListView.view ? ListView.view.width : 0
+
+                // 1.30.0: "New update available" (only with the update check on).
+                Item {
+                  id: updateNotice
+                  objectName: "updateNotice"
+                  readonly property bool show: root.updateAvailable && root.filterText === ""
+                  width: parent.width
+                  height: show ? updateBox.height + Style.space(8) : 0
+                  visible: show
+                  Rectangle {
+                    id: updateBox
+                    width: parent.width
+                    height: updateCol.implicitHeight + Style.space(16)
+                    radius: root.cornerRadius
+                    color: Util.alpha(root.accent, 0.10)
+                    border.width: 1
+                    border.color: Util.alpha(root.accent, 0.35)
+                    Column {
+                      id: updateCol
+                      x: Style.space(10)
+                      y: Style.space(8)
+                      width: parent.width - Style.space(20)
+                      spacing: Style.space(4)
+                      Text {
+                        objectName: "updateNoticeText"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
+                        text: "󰚰  New update available: Nice Clipboard " + root.updateLatest + " (you have " + root.pluginVersion + ")"
+                        color: root.foreground
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.body
+                      }
+                      Text {
+                        objectName: "updateNoticeHow"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
+                        text: ClipboardHistory.updateHowTo(root.updateGit)
+                        color: root.dimText
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                      }
+                      Row {
+                        spacing: Style.spacing.xs
+                        topPadding: Style.space(4)
+                        Button {
+                          objectName: "updateNoticeOpen"
+                          text: "GitHub page"
+                          iconText: "󰊤"
+                          fontSize: Style.font.caption
+                          iconSize: Style.font.caption
+                          foreground: root.foreground
+                          fontFamily: root.fontFamily
+                          horizontalPadding: Style.spacing.sm
+                          verticalPadding: Style.spacing.controlPaddingY
+                          bordered: true
+                          onClicked: root.openUrl(root.repoUrl)
+                        }
+                        Button {
+                          objectName: "updateNoticeDismiss"
+                          text: "Hide"
+                          iconText: "󰅖"
+                          fontSize: Style.font.caption
+                          iconSize: Style.font.caption
+                          foreground: root.foreground
+                          fontFamily: root.fontFamily
+                          horizontalPadding: Style.spacing.sm
+                          verticalPadding: Style.spacing.controlPaddingY
+                          bordered: true
+                          tooltipText: "Hide until the next version"
+                          onClicked: { root.updateDismissed = root.updateLatest; root.writeState() }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                Item {
                   id: ocrBanner
                   objectName: "ocrBanner"
                   readonly property var sug: root.ocrSuggest.length && root.filterText === "" ? root.ocrSuggest[0] : null
-                  width: ListView.view ? ListView.view.width : 0
+                  width: parent.width
                   height: sug ? bannerBox.height + Style.space(8) : 0
                   visible: sug !== null
                   Rectangle {
@@ -2429,6 +2606,7 @@ Item {
                       }
                     }
                   }
+                }
                 }
 
                 section.property: "sectionName"
@@ -3047,10 +3225,10 @@ Item {
     { key: "general", icon: "󰒓", label: "General", desc: "Incognito and what a click on an item does.", comp: secGeneral },
     { key: "history", icon: "󰋚", label: "History", desc: "How long items are kept, and clearing the history. Pinned items always stay.", comp: secHistory },
     { key: "flux", icon: "󰄜", label: "Flux (phone)", desc: "Clipboard sync with your phone through Flux.", comp: secFlux },
-    { key: "ocr", icon: "󰗊", label: "Text recognition", desc: "Languages used to read text in screenshots and images. Click one to install it.", comp: secOcr },
+    { key: "ocr", icon: "󰗊", label: "Text recognition (OCR)", title: "Languages for text recognition (OCR)", desc: "Languages used to read text in screenshots and images. Click one to install it.", comp: secOcr },
     { key: "filters", icon: "󰍉", label: "Search filters", desc: "Type these in the search field; combine them with text, e.g. type:link github.", comp: secFilters },
     { key: "shortcuts", icon: "󰌌", label: "Shortcuts", desc: "Keys in the popup and everywhere.", comp: secShortcuts },
-    { key: "feedback", icon: "󰆈", label: "Feedback", desc: "Ideas, bugs and wishes go straight to the developer.", comp: secFeedback }
+    { key: "feedback", icon: "󰆈", label: "Feedback", desc: "Send feedback straight to the developer from here, or check out the <a href=\"https://github.com/roehrbacher/Nice-Clipboard\">GitHub page</a>.", comp: secFeedback }
   ]
   function showSettingsSection(i) {
     var n = root.settingsSections.length
@@ -3190,7 +3368,42 @@ Item {
           }
         }
 
+        // 1.30.0: the project page, at the bottom of the sidebar.
+        Rectangle {
+          id: sidebarGithub
+          objectName: "settingsGithubLink"
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(8)
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(8)
+          anchors.bottom: sidebarHint.top
+          anchors.bottomMargin: Style.space(8)
+          height: root.rowHeight
+          radius: root.cornerRadius
+          color: githubMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent"
+          Text {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(12)
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: "󰊤   GitHub"
+            color: Util.alpha(root.foreground, 0.8)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            elide: Text.ElideRight
+          }
+          MouseArea {
+            id: githubMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openUrl(root.repoUrl)
+          }
+        }
         Text {
+          id: sidebarHint
           anchors.left: parent.left
           anchors.leftMargin: Style.spacing.panelPadding
           anchors.right: parent.right
@@ -3233,7 +3446,7 @@ Item {
           Text {
             objectName: "settingsPaneTitle"
             textFormat: Text.PlainText
-            text: settingsPane.section.label
+            text: settingsPane.section.title || settingsPane.section.label
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.title
@@ -3243,7 +3456,10 @@ Item {
             objectName: "settingsPaneDesc"
             width: parent.width
             wrapMode: Text.WordWrap
-            textFormat: Text.PlainText
+            // Descriptions are our own constants; StyledText for the one link.
+            textFormat: Text.StyledText
+            linkColor: root.accent
+            onLinkActivated: function(link) { root.openUrl(link) }
             text: settingsPane.section.desc
             color: root.dimText
             font.family: root.fontFamily
