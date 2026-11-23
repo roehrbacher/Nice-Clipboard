@@ -379,6 +379,7 @@ bash tests/geometry/run-harness.sh v1331 # offscreen: typing during a feedback s
 bash tests/geometry/run-harness.sh v1332 # offscreen: empty-state and search-field dimming next to the stock launcher; OCR no longer polls --langs while a job runs
 bash tests/geometry/run-harness.sh v1333 # offscreen: "Select, paste & close" closes and hands the paste to clipboard.sh with the window from before the popup
 bash tests/geometry/run-harness.sh v1334 # offscreen: unpin goes on top of History (clipboard untouched), Ctrl+Z for pin / unpin, Clear only empties a cleared clipboard
+bash tests/geometry/run-harness.sh v1335 # offscreen: pin / unpin / delete and their Ctrl+Z are one clean change: every frame shows the final list, the row is moved (not made again), no scroll jump
 bash tests/topbutton.test.sh    # offscreen (Qt OpenGL on Mesa software, scale 1 and 1.6): list text never shows through the floating Top button
 ```
 

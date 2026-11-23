@@ -384,7 +384,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.33.4"
+  readonly property string pluginVersion: "1.33.5"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -888,6 +888,10 @@ Item {
   // (up to 10, this session only): the item goes back to its place, with
   // its pin, as it was before.
   property var undoStack: []
+  // One change on screen: the cursor is put on the restored row in the
+  // same step as the model update (reselectKey), and the scroll is only
+  // touched once, afterwards (keep the other rows where they were, then
+  // bring the restored row into view if it is outside).
   function undoLast() {
     var r = { index: -1 }
     while (r.index < 0) {
@@ -898,8 +902,11 @@ Item {
     }
     root.history = r.history
     root.saveHistory()
-    root.rebuildDisplay(true)
-    for (var i = 0; i < displayModel.count; i++) if (displayModel.get(i).historyIndex === r.index) { root.selectAbsolute(i); break }
+    root.disarmPointer()
+    root.disarmDelete()
+    root.cursorActive = true
+    root.reselectHistoryIndex = r.index
+    root.rebuildDisplay(true, r.index, true)
     return true
   }
 
@@ -1032,7 +1039,18 @@ Item {
 
   // keepScroll: after pin, delete, drag or a new entry, stay where the list
   // was scrolled (only nudging the cursor row into view), instead of jumping.
-  function rebuildDisplay(keepScroll, movedHistoryIndex) {
+  // movedHistoryIndex: the entry that moves (left out of the scroll
+  // anchors); its index in the history *before* the change (for an undo,
+  // reselectHistoryIndex names it in the new history instead). revealMoved:
+  // after keeping the scroll, bring the cursor row into view if needed.
+  property int reselectHistoryIndex: -1
+  function rebuildDisplay(keepScroll, movedHistoryIndex, revealMoved) {
+    var rows = ClipboardHistory.displayRows(root.history, root.filterText, root.displayLimit)
+    // Undo: the history already changed, so the moved entry is known by its
+    // row identity (the same before and after; history indexes shift).
+    var movedKey = ""
+    for (var m = 0; root.reselectHistoryIndex >= 0 && m < rows.length; m++)
+      if (rows[m].index === root.reselectHistoryIndex) { movedKey = root.rowKey(rows[m]); break }
     // Anchor: the first rows on screen (not the moved one) and their offset
     // from the top of the view; after the rebuild the same entry goes back
     // to the same spot, so rows moving elsewhere don't shift the viewport.
@@ -1041,12 +1059,11 @@ Item {
       var top = resultList.indexAt(Style.space(10), resultList.contentY + 1)
       for (var a = Math.max(0, top); a >= 0 && a < displayModel.count && anchors.length < 4; a++) {
         var ar = displayModel.get(a)
-        if (ar.historyIndex === movedHistoryIndex) continue
+        if (movedKey !== "" ? root.rowKey(ar) === movedKey : ar.historyIndex === movedHistoryIndex) continue
         var it = resultList.itemAtIndex(a)
         if (it) anchors.push({ key: root.rowKey(ar), pinned: ar.pinned, offset: it.y - resultList.contentY })
       }
     }
-    var rows = ClipboardHistory.displayRows(root.history, root.filterText, root.displayLimit)
     var pinnedCount = 0
     for (var p = 0; p < rows.length; p++) if (rows[p].pinned) pinnedCount++
     root.hasPinned = pinnedCount > 0
@@ -1094,6 +1111,10 @@ Item {
     root.firstHistorySection = pinnedCount > 0 && root.filterText === "" ? firstDay : ""
     root.syncModel(items)
 
+    if (root.reselectHistoryIndex >= 0) {
+      for (var rh = 0; rh < displayModel.count; rh++) if (displayModel.get(rh).historyIndex === root.reselectHistoryIndex) { selectedIndex = rh; break }
+      root.reselectHistoryIndex = -1
+    }
     if (root.reselectKey !== "") {
       for (var rs = 0; rs < displayModel.count; rs++) if (root.rowKey(displayModel.get(rs)) === root.reselectKey) { selectedIndex = rs; root.reselectKey = ""; break }
     }
@@ -1103,15 +1124,21 @@ Item {
 
     Qt.callLater(function() {
       if (displayModel.count === 0) return
-      if (keepScroll === true && root.restoreAnchor(anchors)) return
+      if (keepScroll === true && root.restoreAnchor(anchors)) {
+        if (revealMoved === true) resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+        return
+      }
       resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
     })
   }
 
   // Incremental update instead of clear()+append(): rows that stay keep
   // their delegate (no flicker, no re-layout); only removed/new/moved rows
-  // change. Rows are matched by pinned state + content.
-  function syncKey(r) { return (r.pinned ? "P" : "H") + root.rowKey(r) }
+  // change. Rows are matched by content only: a pin, unpin or its Ctrl+Z
+  // moves the row and updates its pin and heading on the same delegate
+  // (1.33.4 matched pinned state too, so the row was removed and made
+  // again, a visible blink on Ctrl+Z).
+  function syncKey(r) { return root.rowKey(r) }
   function syncModel(items) {
     var want = {}
     for (var w = 0; w < items.length; w++) want[root.syncKey(items[w])] = (want[root.syncKey(items[w])] || 0) + 1

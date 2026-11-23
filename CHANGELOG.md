@@ -2,6 +2,10 @@
 
 Newest first. Older history is in the git log.
 
+## 1.33.5
+
+- Fix: Ctrl+Z after an unpin (and pin / unpin themselves) blinked. The list matched rows by content plus pinned state, so a row whose pin changed counted as a different row: it was removed and a new one made in its new place, and Ctrl+Z also moved the cursor and the scroll in a second step after the rebuild. Rows are now matched by content only, so a pin change moves the same row and updates its pin and heading; Ctrl+Z puts the cursor on the restored row in the same step and touches the scroll once, only if the row is out of view. Delete and its Ctrl+Z only ever add or remove that one row.
+
 ## 1.33.4
 
 - Faster left-click paste. The paste waited a fixed 0.15 s before sending Shift+Insert (from the stock paste script, which types into whatever has the keyboard and so waits for the popup to let go). Keys sent to the remembered window address reach that window whoever has the keyboard, and `wl-copy` only returns once the new clipboard is set, so that wait is gone when there is an address. A needed focus and the key-down now go out in one `hyprctl --batch` call, without the extra 50 ms pause between them. Measured on the XPS (real Hyprland, keys and clipboard stubbed): key-down 205 ms after the click before, 50 ms now (271 to 53 ms when the window needs focus first). Without an address the 0.15 s wait stays.

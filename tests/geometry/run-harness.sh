@@ -16,6 +16,8 @@
 #   v1334.qml 1.33.4: unpin goes on top of History (clipboard untouched),
 #             Ctrl+Z for pin/unpin, Clear only empties a cleared clipboard,
 #             Top button PNGs (tests/topbutton.test.sh)
+#   v1335.qml 1.33.5: pin / unpin / delete and their Ctrl+Z: every frame shows
+#             the final list, the row moves (not made again), no scroll jump
 #   v1333.qml 1.33.3: "Select, paste & close" closes and pastes into the
 #             window that had the keyboard when the popup opened
 #   v1322.qml 1.32.2: every popup close ends the clear question / armed
@@ -27,9 +29,9 @@
 # notifiers, xdg-open and the terminal launcher are stubs that only log;
 # feedback goes to a local fake Worker; temp data dir, no watchers, hard
 # timeout. Nothing is installed, removed, sent or pasted.
-#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334 [png dir]
+#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."
@@ -66,7 +68,7 @@ for b in omarchy-notification-send notify-send; do printf '#!/bin/bash\nprintf "
 printf '#!/bin/bash\ncat >> "%s/wlcopy"; echo >> "%s/wlcopy"\n' "$tmp" "$tmp" > "$tmp/bin/wl-copy"; chmod +x "$tmp/bin/"*
 printf 'KineticScroll 1.0 KineticScroll.qml\nMarqueeLabel 1.0 MarqueeLabel.qml\nSwitchTrack 1.0 SwitchTrack.qml\nPanelStub 1.0 PanelStub.qml\n' > "$tmp/clip/qmldir"
 sed -i -e 's/^  KeyboardPanel {/  PanelStub {/' -e 's/; pkill -f [^"]*"/"/' -e '/textWatchProc.running = true$/d' -e '/imageWatchProc.running = true$/d' -e '/currentProc.running = true$/d' "$tmp/clip/Clipboard.qml"
-printf '  function displayModelCount() { return displayModel.count }\n  function displayRow(i) { return displayModel.get(i) }\n  function settingsLoaderItem() { return settingsWindowLoader.item }\n}\n' > "$tmp/tail"; sed -i '$d' "$tmp/clip/Clipboard.qml"; cat "$tmp/tail" >> "$tmp/clip/Clipboard.qml"
+printf '  function displayModelCount() { return displayModel.count }\n  function displayRow(i) { return displayModel.get(i) }\n  function displayModelRef() { return displayModel }\n  function settingsLoaderItem() { return settingsWindowLoader.item }\n}\n' > "$tmp/tail"; sed -i '$d' "$tmp/clip/Clipboard.qml"; cat "$tmp/tail" >> "$tmp/clip/Clipboard.qml"
 # Never the live feedback Worker: a local fake one answers {"ok":true}.
 port=$((20000 + RANDOM % 20000))
 cat > "$tmp/worker.py" <<PY
