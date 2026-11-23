@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "timon.clipboard",
   "name": "Nice Clipboard",
-  "version": "1.24.1",
+  "version": "1.25.0",
   "author": "Timon Röhrbacher (based on Omarchy's clipboard manager)",
   "license": "MIT",
   "description": "Clipboard history for Omarchy with pinned items, paste queue, incognito, OCR, QR codes and Flux phone sync",

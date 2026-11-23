@@ -63,8 +63,11 @@ imported once on first start. To hear about upstream changes, run
   The phone button's icon and tooltip show the Flux state ("<phone> connected
   via Flux", "No phone connected", "Flux paused (incognito)", "Flux not
   running"); clicking it closes the popup and opens Flux (`flux-cli open`). The gear opens the settings
-  view: incognito, clear history, Flux (phone, last sync, "Send current
-  clipboard" with Ctrl+S), history limit, all keys. Hovering the phone action
+  view, split into sections with divider lines like Omarchy's Display panel:
+  General (incognito, click action), History (delete after, clear), Flux
+  (phone, last sync, "Send current clipboard" with Ctrl+S), Text recognition
+  (OCR languages), Search filters, Shortcuts, Feedback. The header then says
+  "Settings" and the search button becomes a back arrow. Hovering the phone action
   of a row shows "Send via Flux".
 - **Incognito:** nothing new is saved (text or images) until you turn it
   off; a small "Incognito" badge in the popup shows it. Survives a restart.
@@ -217,7 +220,7 @@ In the popup:
 | Shift+← → / Shift+Home End, Ctrl+A, mouse drag | select search text |
 | Ctrl+C / Ctrl+X (with search text selected) | copy / cut it to the clipboard (becomes a new history item) |
 | Ctrl+V | paste into the search |
-| the gear icon in the footer | settings view: ↑ ↓ pick a setting, Enter toggles it, Esc goes back to the list |
+| the gear icon in the footer | settings view: ↑ ↓ pick a setting, ← → change it, Enter toggles it, Esc (or the back arrow) goes back to the list |
 | Esc | clear the search, then close |
 
 ## Install
@@ -267,6 +270,8 @@ QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_kineti
 bash tests/capture.test.sh     # capture: incognito, password hint, size caps, 0600/0700, import, prune
 bash tests/flux-pause.test.sh  # Flux pause/resume with a stub systemctl (never touches the real fluxd)
 bash tests/queue.test.sh       # paste queue (stub hyprctl / wl-copy / notifier), incl. quiet cancel
+bash tests/version.test.sh      # Clipboard.qml version (sent with feedback) = manifest = CHANGELOG
+bash tests/geometry/run-v125.sh # 1.25.0 offscreen: settings sections and dividers, back arrow, OCR preview notification (writes a PNG)
 bash tests/geometry/run-v121.sh # 1.21.0 offscreen: queue pill, queue dropped on pick/buttons, notifications, OCR help
 ```
 

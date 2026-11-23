@@ -323,6 +323,19 @@ function snippet(text, n) {
   return s.length > n ? s.slice(0, n - 1) + "…" : s
 }
 // 1.18.0: what a QR image row shows instead of "Image · 12 KB".
+// 1.25.0: notification body for "Copied text from screenshot": the OCR
+// text on one line (whitespace collapsed), cut at max characters (default
+// 120, whole characters, not halves of an emoji) with "…", in quotes so it
+// can never be read as an option by omarchy-notification-send, and with
+// & < > escaped because notification bodies are markup.
+function ocrPreview(text, max) {
+  var limit = max > 1 ? max : 120
+  var chars = Array.from(String(text || "").replace(/\s+/g, " ").trim())
+  var s = chars.length > limit ? chars.slice(0, limit - 1).join("").replace(/\s+$/, "") + "…" : chars.join("")
+  s = s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  return "“" + s + "”"
+}
+
 function qrSummary(entry) {
   var qr = String(entry && entry.qr || "").trim()
   if (!qr) return ""
@@ -1199,6 +1212,7 @@ if (typeof module !== "undefined") {
     clipKeyOf: clipKeyOf,
     unpinToTop: unpinToTop,
     qrSummary: qrSummary,
+    ocrPreview: ocrPreview,
     needsScan: needsScan,
     SCAN_VERSION: SCAN_VERSION,
     CLICK_ACTIONS: CLICK_ACTIONS,

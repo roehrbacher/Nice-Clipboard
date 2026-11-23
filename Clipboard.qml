@@ -16,6 +16,32 @@ import "Bridge.js" as Bridge
 Item {
   id: root
 
+  // 1.25.0: section heading for the settings view, built from the stock
+  // Display panel's own pieces (qs.Ui PanelSeparator: 1px, foreground at
+  // 12%; PanelSectionHeader: caption, bold, foreground darkened 1.4x) with
+  // the same gaps (14 px around the rule, 6 px from header to content).
+  component SettingsHeading: Column {
+    property string title: ""
+    property bool first: false
+    width: parent ? parent.width : 0
+    topPadding: first ? Style.space(2) : Style.space(12)
+    bottomPadding: Style.space(4)
+    spacing: Style.space(12)
+
+    PanelSeparator {
+      visible: !parent.first
+      width: parent.width
+      foreground: root.foreground
+    }
+
+    PanelSectionHeader {
+      text: parent.title
+      foreground: root.foreground
+      fontFamily: root.fontFamily
+      leftPadding: Style.space(10)
+    }
+  }
+
   // ---- settings (edit here) --------------------------------------------
   // Unpinned entries are deleted keepDays days after they were copied
   // (1, 2, 5, 10 or 20, picked in settings, saved in state.json). Pinned
@@ -44,7 +70,8 @@ Item {
   // Settings view (gear icon in the footer).
   property bool infoOpen: false
   property int infoIndex: 0
-  readonly property var infoActions: ["incognito", "clear", "back", "send", "keep", "click"]
+  // Keyboard order = on-screen order (1.25.0 sections).
+  readonly property var infoActions: ["incognito", "click", "keep", "clear", "send"]
   // Flux details for the settings view (from `flux-cli status --json`).
   property string phoneName: ""
   property int lastSync: 0
@@ -268,12 +295,14 @@ Item {
   // Feedback (1.24.0): opens a prefilled GitHub issue (label "feedback") in
   // the browser; the plugin needs no token, GitHub uses the browser login.
   readonly property string feedbackRepo: "roehrbacher/Nice-Clipboard"
+  // Kept equal to manifest.json by tests/version.test.sh.
+  readonly property string pluginVersion: "1.25.0"
   property string feedbackNote: ""
   function feedbackUrl(text) {
     var t = String(text || "").trim()
     var first = t.split("\n")[0]
     var title = "Feedback: " + (first.length > 60 ? first.slice(0, 57) + "..." : first)
-    var body = t + "\n\n---\nSent from Nice Clipboard settings (1.24.0)"
+    var body = t + "\n\n---\nSent from Nice Clipboard settings (" + root.pluginVersion + ")"
     return "https://github.com/" + root.feedbackRepo + "/issues/new?labels=feedback&title="
       + encodeURIComponent(title) + "&body=" + encodeURIComponent(body)
   }
@@ -1006,7 +1035,9 @@ Item {
     root.dropQueue()
     root.copyText(r.ocrText)
     root.close()
-    root.notify("󰆏", r.ocrTip.replace(/^Copy/, "Copied"), "Paste it with Super+V.", 2500)
+    // 1.25.0: show what was recognised, so a bad scan is caught before
+    // pasting: one line, whitespace collapsed, cut with "…", markup escaped.
+    root.notify("󰆏", r.ocrTip.replace(/^Copy/, "Copied"), ClipboardHistory.ocrPreview(r.ocrText) + "\nPaste it with Super+V.", 6000)
   }
   function openIndex(index) { root.runOnIndex(index, "open") }
   // Settings: copy one language's pacman command (the user runs it).
@@ -1442,7 +1473,7 @@ Item {
             anchors.rightMargin: Style.space(12)
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: "Clipboard Manager"
+            text: root.infoOpen ? "Settings" : "Clipboard Manager"
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.title
@@ -1451,12 +1482,13 @@ Item {
           }
 
           // Square, styled exactly like the expanded search field (same
-          // fill, border and radius as searchBox), icon centred. Not on the
-          // settings page, where searching does nothing.
+          // fill, border and radius as searchBox), icon centred. On the
+          // settings page (1.25.0) it is the back arrow instead (same as Esc
+          // or the gear), since searching does nothing there.
           BorderSurface {
             id: searchButton
             objectName: "searchButton"
-            visible: !root.searchShown && !root.infoOpen
+            visible: !root.searchShown
             // Above searchInput: the (invisible while collapsed) text field
             // spans the whole row and is declared later, so without this it
             // took most clicks meant for the button.
@@ -1472,19 +1504,27 @@ Item {
             Text {
               anchors.centerIn: parent
               textFormat: Text.PlainText
-              text: "󰍉"
+              text: root.infoOpen ? "󰁍" : "󰍉"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.icon
             }
 
             MouseArea {
+              id: searchButtonMouse
               anchors.fill: parent
+              hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: {
+                if (root.infoOpen) { root.closeInfo(); return }
                 root.searchExpanded = true
                 searchInput.forceActiveFocus()
               }
+            }
+
+            PanelToolTip {
+              visible: searchButtonMouse.containsMouse && root.infoOpen
+              text: "Back to the list (Esc)"
             }
           }
 
@@ -1596,6 +1636,7 @@ Item {
 
             Flickable {
               id: infoFlick
+              objectName: "infoFlick"
               anchors.fill: parent
               clip: true
               contentWidth: width
@@ -1611,104 +1652,118 @@ Item {
 
               Column {
                 id: infoColumn
+                objectName: "infoColumn"
                 width: infoFlick.width
                 spacing: Style.space(2)
 
-                Text {
-                  text: "SETTINGS"
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  topPadding: Style.space(2)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
+                // 1.25.0: sections like the stock Display panel (PanelSeparator +
+                // PanelSectionHeader between them), most-used settings first.
+                SettingsHeading {
+                  title: "GENERAL"
+                  first: true
                 }
-
                 Repeater {
                   model: [
-                    { key: "incognito", label: "󰗹  Incognito", value: root.privateMode ? "on" : "off", hint: "Ctrl+I" },
-                    { key: "clear", label: "󰩺  Clear history", value: "", hint: "Shift+Del" },
-                    { key: "back", label: "󰁍  Back to the list", value: "", hint: "Esc" }
+                    { key: "incognito", label: "󰗹  Incognito", value: root.privateMode ? "on" : "off", hint: "Ctrl+I" }
                   ]
-                  delegate: Rectangle {
-                    required property var modelData
-                    required property int index
-                    width: infoColumn.width
-                    height: root.rowHeight
-                    radius: root.cornerRadius
-                    readonly property bool current: root.infoIndex === root.infoActions.indexOf(modelData.key)
-                    color: current ? Style.hoverFillFor(root.foreground, root.accent) : (infoRowMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent")
+                  delegate: infoActionRow
+                }
+                Repeater {
+                  model: [
+                    { icon: "󰍽", label: "Click action", value: root.clickAction === "copy" ? "stays open" : "closes the popup" }
+                  ]
+                  delegate: infoValueRow
+                }
 
-                    Text {
-                      anchors.left: parent.left
-                      anchors.leftMargin: Style.space(10)
-                      anchors.verticalCenter: parent.verticalCenter
-                      textFormat: Text.PlainText
-                      text: parent.modelData.label
-                      color: parent.modelData.key === "incognito" && root.privateMode ? root.accent : root.foreground
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.body
-                    }
+                // Stock pills, like the Display panel's SCALE row.
+                Grid {
+                  id: clickRow
+                  objectName: "clipClickRow"
+                  x: Style.space(10)
+                  width: infoColumn.width - Style.space(20)
+                  columns: 2
+                  spacing: Style.spacing.xs
+                  readonly property real cellWidth: (width - spacing) / 2
 
-                    Row {
-                      anchors.right: parent.right
-                      anchors.rightMargin: Style.space(10)
-                      anchors.verticalCenter: parent.verticalCenter
-                      spacing: Style.space(10)
+                  Repeater {
+                    model: [
+                      { key: "copy", label: "Select (copy only)" },
+                      { key: "paste", label: "Select, paste & close" }
+                    ]
 
-                      Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        textFormat: Text.PlainText
-                        text: parent.parent.modelData.hint
-                        color: root.dimText
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.body
-                      }
-
-                      Rectangle {
-                        visible: parent.parent.modelData.key === "incognito"
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.round(Style.font.body * 2.2)
-                        height: Math.round(Style.font.body * 1.2)
-                        radius: height / 2
-                        color: root.privateMode ? root.accent : Util.alpha(root.foreground, 0.22)
-
-                        Rectangle {
-                          width: parent.height - Style.space(4)
-                          height: width
-                          radius: width / 2
-                          y: Style.space(2)
-                          x: root.privateMode ? parent.width - width - Style.space(2) : Style.space(2)
-                          color: root.privateMode ? root.background : root.foreground
-                          Behavior on x { NumberAnimation { duration: 120 } }
-                        }
-                      }
-                    }
-
-                    MouseArea {
-                      id: infoRowMouse
-                      anchors.fill: parent
-                      hoverEnabled: true
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: { root.infoIndex = root.infoActions.indexOf(parent.modelData.key); root.runInfoAction(parent.modelData.key) }
+                    Button {
+                      required property var modelData
+                      objectName: "clipClickPill"
+                      width: clickRow.cellWidth
+                      text: modelData.label
+                      fontSize: Style.font.caption
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      horizontalPadding: Style.spacing.sm
+                      verticalPadding: Style.spacing.controlPaddingY
+                      bordered: true
+                      active: root.clickAction === modelData.key
+                      hasCursor: root.infoActions[root.infoIndex] === "click" && root.clickAction === modelData.key
+                      onClicked: { root.infoIndex = root.infoActions.indexOf("click"); root.setClickAction(modelData.key) }
                     }
                   }
                 }
 
-                // Flux section (the header phone icon opens the view here).
-                Text {
-                  id: fluxSection
-                  text: "FLUX"
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  topPadding: Style.space(10)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
+                SettingsHeading {
+                  title: "HISTORY"
+                }
+                Repeater {
+                  model: [
+                    { icon: "󰋚", label: "Delete items after", value: "pinned items kept" }
+                  ]
+                  delegate: infoValueRow
                 }
 
+                // Auto-delete presets: the stock display panel's SCALE pills
+                // (Button, caption size, bordered, same padding and spacing).
+                Grid {
+                  id: keepRow
+                  objectName: "clipKeepRow"
+                  x: Style.space(10)
+                  width: infoColumn.width - Style.space(20)
+                  columns: ClipboardHistory.KEEP_DAYS.length
+                  spacing: Style.spacing.xs
+                  readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
+
+                  Repeater {
+                    model: ClipboardHistory.KEEP_DAYS
+
+                    Button {
+                      required property int modelData
+                      objectName: "clipKeepPill"
+                      width: keepRow.cellWidth
+                      text: ClipboardHistory.keepDaysLabel(modelData)
+                      fontSize: Style.font.caption
+                      foreground: root.foreground
+                      fontFamily: root.fontFamily
+                      horizontalPadding: Style.spacing.sm
+                      verticalPadding: Style.spacing.controlPaddingY
+                      bordered: true
+                      active: root.keepDays === modelData
+                      hasCursor: root.infoActions[root.infoIndex] === "keep" && root.keepDays === modelData
+                      onClicked: { root.infoIndex = root.infoActions.indexOf("keep"); root.setKeepDays(modelData) }
+                    }
+                  }
+                }
+
+                Repeater {
+                  model: [
+                    { key: "clear", label: "󰩺  Clear history (pins stay)", value: "", hint: "Shift+Del" }
+                  ]
+                  delegate: infoActionRow
+                }
+
+
+                // Flux section (the footer phone button opens the view here).
+                SettingsHeading {
+                  id: fluxSection
+                  title: "FLUX (PHONE)"
+                }
                 Repeater {
                   model: [
                     { icon: "󰄜", label: root.phoneOnline ? (root.phoneName || "Phone") : "No phone connected", value: root.fluxStatusText },
@@ -1758,108 +1813,104 @@ Item {
                   }
                 }
 
-                Text {
-                  text: "HISTORY"
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  topPadding: Style.space(10)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
+                // OCR languages (1.20.0). Only installed packs are used,
+                // nothing is downloaded; OMARCHY_OCR_LANGS picks them, like
+                // Omarchy's own text capture (Super+Ctrl+Print). Popular
+                // packs are listed; a click copies its pacman command.
+                SettingsHeading {
+                  objectName: "clipOcrHeading"
+                  title: "TEXT RECOGNITION (OCR)"
                 }
-
                 Repeater {
                   model: [
-                    { icon: "󰋚", label: "Delete items after", value: "pinned items kept" }
+                    { icon: "󰗊", label: "Installed languages", value: root.ocrInfo.installed.length ? root.ocrInfo.installed.join(", ") : "none (tesseract missing)" },
+                    { icon: "󰄬", label: root.ocrInfo.env ? "Used (OMARCHY_OCR_LANGS)" : "Used", value: root.ocrInfo.used || "–" }
                   ]
                   delegate: infoValueRow
                 }
 
-                // Auto-delete presets: the stock display panel's SCALE pills
-                // (Button, caption size, bordered, same padding and spacing).
+                Text {
+                  objectName: "clipOcrHelp"
+                  width: infoColumn.width
+                  wrapMode: Text.WordWrap
+                  textFormat: Text.PlainText
+                  text: "Click a language to copy its install command. Installing needs your sudo password, so the plugin never installs anything itself."
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  topPadding: Style.space(6)
+                  bottomPadding: Style.space(4)
+                  leftPadding: Style.space(10)
+                  rightPadding: Style.space(10)
+                }
+
+                // 1.25.0: popular languages as stock pills, three per row
+                // (was one full-width row each). Installed = highlighted with
+                // a check; a click on any other copies its pacman command
+                // (shown in the tooltip).
                 Grid {
-                  id: keepRow
-                  objectName: "clipKeepRow"
+                  id: ocrLangGrid
+                  objectName: "clipOcrLangGrid"
                   x: Style.space(10)
                   width: infoColumn.width - Style.space(20)
-                  columns: ClipboardHistory.KEEP_DAYS.length
+                  columns: 3
                   spacing: Style.spacing.xs
                   readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
 
                   Repeater {
-                    model: ClipboardHistory.KEEP_DAYS
+                    model: ClipboardHistory.ocrLanguageRows(root.ocrInfo.installed)
 
                     Button {
-                      required property int modelData
-                      objectName: "clipKeepPill"
-                      width: keepRow.cellWidth
-                      text: ClipboardHistory.keepDaysLabel(modelData)
+                      required property var modelData
+                      objectName: "clipOcrLang"
+                      readonly property string code: modelData.code
+                      readonly property string cmd: modelData.cmd
+                      readonly property bool installed: modelData.installed
+                      width: ocrLangGrid.cellWidth
+                      text: modelData.name
+                      iconText: installed ? "󰄬" : ""
                       fontSize: Style.font.caption
+                      iconSize: Style.font.caption
                       foreground: root.foreground
                       fontFamily: root.fontFamily
                       horizontalPadding: Style.spacing.sm
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
-                      active: root.keepDays === modelData
-                      hasCursor: root.infoActions[root.infoIndex] === "keep" && root.keepDays === modelData
-                      onClicked: { root.infoIndex = root.infoActions.indexOf("keep"); root.setKeepDays(modelData) }
+                      active: installed
+                      tooltipText: installed ? "Installed" : "Click to copy: " + cmd
+                      onClicked: root.copyOcrInstall(modelData)
                     }
                   }
                 }
 
+                // Search filters: one row per filter, the example to type on
+                // the right; combine them with text, e.g. "type:link github".
+                SettingsHeading {
+                  objectName: "clipFilterHeading"
+                  title: "SEARCH FILTERS"
+                }
+                Repeater {
+                  id: filterRows
+                  model: ClipboardHistory.SEARCH_FILTER_EXAMPLES.map(function(f) { return { icon: "󰍉", label: f.label, value: f.value } })
+                  delegate: infoValueRow
+                }
+
+                SettingsHeading {
+                  title: "SHORTCUTS"
+                }
                 Repeater {
                   model: [
-                    { icon: "󰍽", label: "Click action", value: root.clickAction === "copy" ? "stays open" : "closes the popup" }
+                    { icon: "󰅍", label: "Open clipboard", value: "Alt+V · Super+Ctrl+V" },
+                    { icon: "󰐃", label: "Paste pinned item N, anywhere", value: "Alt+Shift+1…9" },
+                    { icon: "󰆏", label: "Paste row N, in this popup", value: "Alt+1…9" },
+                    { icon: "󰒆", label: "Paste queue: pick rows, then paste in order", value: "Ctrl+click · Ctrl+Enter" }
                   ]
                   delegate: infoValueRow
                 }
 
-                // Same stock pills as "Delete items after".
-                Grid {
-                  id: clickRow
-                  objectName: "clipClickRow"
-                  x: Style.space(10)
-                  width: infoColumn.width - Style.space(20)
-                  columns: 2
-                  spacing: Style.spacing.xs
-                  readonly property real cellWidth: (width - spacing) / 2
-
-                  Repeater {
-                    model: [
-                      { key: "copy", label: "Select (copy only)" },
-                      { key: "paste", label: "Select, paste & close" }
-                    ]
-
-                    Button {
-                      required property var modelData
-                      objectName: "clipClickPill"
-                      width: clickRow.cellWidth
-                      text: modelData.label
-                      fontSize: Style.font.caption
-                      foreground: root.foreground
-                      fontFamily: root.fontFamily
-                      horizontalPadding: Style.spacing.sm
-                      verticalPadding: Style.spacing.controlPaddingY
-                      bordered: true
-                      active: root.clickAction === modelData.key
-                      hasCursor: root.infoActions[root.infoIndex] === "click" && root.clickAction === modelData.key
-                      onClicked: { root.infoIndex = root.infoActions.indexOf("click"); root.setClickAction(modelData.key) }
-                    }
-                  }
+                SettingsHeading {
+                  title: "FEEDBACK"
                 }
-
-                Text {
-                  text: "FEEDBACK"
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  topPadding: Style.space(10)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
-                }
-
                 // Same box style as the search field.
                 BorderSurface {
                   id: feedbackBox
@@ -1934,151 +1985,79 @@ Item {
                     onClicked: root.sendFeedback()
                   }
                 }
-
-                Text {
-                  text: "SHORTCUTS"
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  topPadding: Style.space(10)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
-                }
-
-                Repeater {
-                  model: [
-                    { icon: "󰅍", label: "Open clipboard", value: "Alt+V · Super+Ctrl+V" },
-                    { icon: "󰐃", label: "Paste pinned item N, anywhere", value: "Alt+Shift+1…9" },
-                    { icon: "󰆏", label: "Paste row N, in this popup", value: "Alt+1…9" },
-                    { icon: "󰒆", label: "Paste queue: pick rows, then paste in order", value: "Ctrl+click · Ctrl+Enter" }
-                  ]
-                  delegate: infoValueRow
-                }
-
-                // Search filters: one row per filter, the example to type on
-                // the right; combine them with text, e.g. "type:link github".
-                Text {
-                  objectName: "clipFilterHeading"
-                  width: infoColumn.width
-                  text: "SEARCH FILTERS"
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  topPadding: Style.space(10)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
-                }
-
-                Repeater {
-                  id: filterRows
-                  model: ClipboardHistory.SEARCH_FILTER_EXAMPLES.map(function(f) { return { icon: "󰍉", label: f.label, value: f.value } })
-                  delegate: infoValueRow
-                }
-
-                // OCR languages (1.20.0). Only installed packs are used,
-                // nothing is downloaded; OMARCHY_OCR_LANGS picks them, like
-                // Omarchy's own text capture (Super+Ctrl+Print). Popular
-                // packs are listed; a click copies its pacman command.
-                Text {
-                  objectName: "clipOcrHeading"
-                  width: infoColumn.width
-                  text: "LANGUAGES FOR TEXT RECOGNITION (OCR)"
-                  elide: Text.ElideRight
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  topPadding: Style.space(10)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
-                }
-
-                Repeater {
-                  model: [
-                    { icon: "󰗊", label: "Installed languages", value: root.ocrInfo.installed.length ? root.ocrInfo.installed.join(", ") : "none (tesseract missing)" },
-                    { icon: "󰄬", label: root.ocrInfo.env ? "Used (OMARCHY_OCR_LANGS)" : "Used", value: root.ocrInfo.used || "–" }
-                  ]
-                  delegate: infoValueRow
-                }
-
-                Text {
-                  objectName: "clipOcrHelp"
-                  width: infoColumn.width
-                  wrapMode: Text.WordWrap
-                  textFormat: Text.PlainText
-                  text: "Add a language: click it to copy its install command.\nWhy no install button: installing system packages needs your sudo password, and this plugin never runs root commands or downloads anything on its own, for safety."
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  topPadding: Style.space(6)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
-                  rightPadding: Style.space(10)
-                }
-
-                // One row per popular language; installed ones are marked
-                // and not clickable.
-                Repeater {
-                  model: ClipboardHistory.ocrLanguageRows(root.ocrInfo.installed)
-                  delegate: Rectangle {
-                    required property var modelData
-                    objectName: "clipOcrLang"
-                    readonly property string code: modelData.code
-                    readonly property string cmd: modelData.cmd
-                    readonly property bool installed: modelData.installed
-                    width: infoColumn.width
-                    height: root.rowHeight
-                    radius: root.cornerRadius
-                    color: !installed && langMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent"
-
-                    Text {
-                      anchors.left: parent.left
-                      anchors.leftMargin: Style.space(10)
-                      anchors.right: langValue.left
-                      anchors.rightMargin: Style.space(10)
-                      anchors.verticalCenter: parent.verticalCenter
-                      textFormat: Text.PlainText
-                      text: (parent.installed ? "󰄬" : "󰐕") + "  " + parent.modelData.name
-                      color: parent.installed ? root.dimText : root.foreground
-                      elide: Text.ElideRight
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.body
-                    }
-
-                    Text {
-                      id: langValue
-                      objectName: "clipOcrLangValue"
-                      anchors.right: parent.right
-                      anchors.rightMargin: Style.space(10)
-                      anchors.verticalCenter: parent.verticalCenter
-                      textFormat: Text.PlainText
-                      text: parent.installed ? "Installed" : parent.cmd
-                      color: root.dimText
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                    }
-
-                    MouseArea {
-                      id: langMouse
-                      anchors.fill: parent
-                      enabled: !parent.installed
-                      hoverEnabled: true
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: root.copyOcrInstall(parent.modelData)
-                    }
-
-                    PanelToolTip {
-                      visible: langMouse.containsMouse && !parent.installed
-                      text: "Click to copy: " + parent.cmd
-                    }
-                  }
-                }
+                Item { width: 1; height: Style.space(6) }
               }
             }
           }
 
+          // Clickable settings row (incognito, clear history): icon + label,
+          // shortcut hint right, stock hover/cursor fill.
+          Component {
+            id: infoActionRow
+            Rectangle {
+              required property var modelData
+              required property int index
+              width: infoColumn.width
+              height: root.rowHeight
+              radius: root.cornerRadius
+              readonly property bool current: root.infoIndex === root.infoActions.indexOf(modelData.key)
+              color: current ? Style.hoverFillFor(root.foreground, root.accent) : (infoRowMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent")
+
+              Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: parent.modelData.label
+                color: parent.modelData.key === "incognito" && root.privateMode ? root.accent : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+              }
+
+              Row {
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(10)
+
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  textFormat: Text.PlainText
+                  text: parent.parent.modelData.hint
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+
+                Rectangle {
+                  visible: parent.parent.modelData.key === "incognito"
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.round(Style.font.body * 2.2)
+                  height: Math.round(Style.font.body * 1.2)
+                  radius: height / 2
+                  color: root.privateMode ? root.accent : Util.alpha(root.foreground, 0.22)
+
+                  Rectangle {
+                    width: parent.height - Style.space(4)
+                    height: width
+                    radius: width / 2
+                    y: Style.space(2)
+                    x: root.privateMode ? parent.width - width - Style.space(2) : Style.space(2)
+                    color: root.privateMode ? root.background : root.foreground
+                    Behavior on x { NumberAnimation { duration: 120 } }
+                  }
+                }
+              }
+
+              MouseArea {
+                id: infoRowMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { root.infoIndex = root.infoActions.indexOf(parent.modelData.key); root.runInfoAction(parent.modelData.key) }
+              }
+            }
+          }
           // Read-only settings row, styled like a list row (icon + label, value right).
           Component {
             id: infoValueRow

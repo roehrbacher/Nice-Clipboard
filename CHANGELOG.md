@@ -2,6 +2,14 @@
 
 Newest first. Older history is in the git log.
 
+## 1.25.0
+
+- Settings are easier to scan: sections with the stock Display panel's divider line and section headers (qs.Ui PanelSeparator / PanelSectionHeader, same gaps), most-used first: General (incognito, click action), History (delete after, clear history), Flux, Text recognition (OCR), Search filters, Shortcuts, Feedback. ↑ ↓ follow the new order.
+- On the settings page the header says "Settings" and the search button is a back arrow (same as Esc or the gear); the "Back to the list" row is gone.
+- OCR languages are stock pills, three per row (installed ones highlighted with a check, the pacman command in the tooltip) instead of one long row each; the help is one short sentence.
+- "Copied text from screenshot" shows what was recognised: the text on one line, cut at 120 characters with "…" (markup escaped), and stays 6 s instead of 2.5 s.
+- Feedback issues carry the real plugin version (was fixed at 1.24.0); `tests/version.test.sh` keeps it equal to manifest.json.
+
 ## 1.24.1
 
 - Clipboard reads time out: `wl-paste --list-types` and `wl-paste --type text` in capture.sh now have a 2-second timeout (image and HTML reads already did), so a stuck clipboard cannot hang the watcher. Ported from the Omarchy 4.5 fix that had only landed in the shared-config copy.

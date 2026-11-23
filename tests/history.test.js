@@ -569,3 +569,18 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.strictEqual(H.firstPinnedIndex([]), -1, "empty history: nothing")
   console.log("ok 1.20.0 OCR language rows + first pinned")
 }
+
+{
+  // 1.25.0: OCR notification preview
+  assert.strictEqual(H.ocrPreview("  Hello\n\n  world\t!  "), "“Hello world !”", "whitespace collapsed to one line")
+  const long = H.ocrPreview("a".repeat(300))
+  assert.strictEqual(Array.from(long).length, 120 + 2, "cut to 120 chars incl. … plus quotes")
+  assert.ok(long.endsWith("…”"), "ellipsis at the end")
+  assert.strictEqual(H.ocrPreview("x".repeat(120)), "“" + "x".repeat(120) + "”", "exactly 120: no ellipsis")
+  assert.strictEqual(H.ocrPreview("a <b>bold</b> & c"), "“a &lt;b&gt;bold&lt;/b&gt; &amp; c”", "markup escaped")
+  assert.strictEqual(H.ocrPreview("--exec"), "“--exec”", "never starts with a dash")
+  assert.strictEqual(H.ocrPreview("word ".repeat(10), 12), "“word word w…”", "custom length")
+  const emoji = H.ocrPreview("😀".repeat(200), 5)
+  assert.strictEqual(emoji, "“😀😀😀😀…”", "no broken surrogate pairs")
+  console.log("ok 1.25.0 OCR preview")
+}
