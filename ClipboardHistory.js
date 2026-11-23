@@ -328,11 +328,9 @@ function snippet(text, n) {
 // 120, whole characters, not halves of an emoji) with "…", in quotes so it
 // can never be read as an option by omarchy-notification-send, and with
 // & < > escaped because notification bodies are markup.
-// 1.28.0: 72 characters (was 120). Omarchy's toast shows 2 body lines and
-// cuts the rest with its own "…", which hid the closing quote; 72 fits 2
-// lines with the quote for normal text (measured offscreen, run-v128.sh).
+// (1.28.0 tried 72 characters; 1.29.0 is back to 120 as in 1.25–1.27.)
 function ocrPreview(text, max) {
-  var limit = max > 1 ? max : 72
+  var limit = max > 1 ? max : 120
   var chars = Array.from(String(text || "").replace(/\s+/g, " ").trim())
   var s = chars.length > limit ? chars.slice(0, limit - 1).join("").replace(/\s+$/, "") + "…" : chars.join("")
   s = s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -592,18 +590,18 @@ function ocrLanguageRows(installed) {
   }).sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0 })
 }
 
-// 1.28.0: a click installs the pack in Omarchy's floating terminal
-// (omarchy-pkg-add = pacman -S --needed, signed Arch package; the sudo
-// password is typed there, the plugin never holds root). Returns the argv
-// to run detached, or [] for anything that is not a plain pack code.
-function ocrInstallArgv(code) {
+// 1.29.0: runs the plugin's own ocr-install.sh in Omarchy's floating
+// terminal (app id org.omarchy.terminal floats via Omarchy's window rules).
+// The script shows the exact pacman command and waits for Enter before
+// sudo asks for the password. Plain xdg-terminal-exec when uwsm-app is
+// missing. Arguments go as argv, never through a shell string.
+function ocrInstallArgv(code, script, name) {
   var c = String(code || "")
-  if (!/^[a-z]{3}(_[a-z]{3,4})?$/.test(c)) return []
-  var pkg = "tesseract-data-" + c
-  var script = "if command -v omarchy-launch-floating-terminal-with-presentation >/dev/null && command -v omarchy-pkg-add >/dev/null; then "
-    + "exec omarchy-launch-floating-terminal-with-presentation 'omarchy-pkg-add " + pkg + "'; "
-    + "else exec xdg-terminal-exec -e bash -c 'sudo pacman -S --needed " + pkg + "; read -rp \"Done. Press Enter\"'; fi"
-  return ["bash", "-c", script]
+  if (!/^[a-z]{3}(_[a-z]{3,4})?$/.test(c) || !script) return []
+  var launch = 'if command -v uwsm-app >/dev/null 2>&1; then '
+    + 'exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title="Nice Clipboard" -e "$0" "$1" "$2"; '
+    + 'else exec setsid xdg-terminal-exec -e "$0" "$1" "$2"; fi'
+  return ["bash", "-c", launch, String(script), c, String(name || c)]
 }
 
 // ---- click action (1.18.0) ------------------------------------------------
@@ -922,10 +920,12 @@ function searchShown(filterText, expanded) {
 // ev: { key, ctrl, alt, shift, hasSelection }
 function searchKeyAction(ev) {
   var key = ev.key
-  var digit = key >= 0x31 && key <= 0x39
   if (key === KEY.Escape) return ev.queued > 0 ? "queueClear" : "escape"
   if (ev.ctrl && !ev.alt && key === KEY.Space) return "queueToggle"
-  if (digit && ev.alt && !ev.ctrl) return "slot"
+  // 1.29.0: Alt+Shift+1…9, 0 (slots); plain Alt+N does nothing.
+  if (ev.slot >= 1 && ev.alt && ev.shift && !ev.ctrl) return "slot"
+  // Plain Alt+digit: swallowed, so no digit lands in the search field.
+  if (ev.slot >= 1 && ev.alt && !ev.ctrl) return "ignore"
   if (ev.ctrl && !ev.alt && (key === KEY.C || key === KEY.Insert)) return ev.hasSelection ? "copySelection" : ""
   if (ev.ctrl && !ev.alt && key === KEY.X) return ev.hasSelection ? "cutSelection" : ""
   // Qt's own Ctrl+U would also copy the line to the clipboard; just clear.
@@ -950,46 +950,6 @@ function searchKeyAction(ev) {
 
 // ---- v1.3 helpers -----------------------------------------------------------
 
-// 1.26.0: Alt+N pastes the Nth *history* row (pins have Alt+Shift+N,
-// which works anywhere). rows: [{ pinned }] in display order. Returns the
-// display index, or -1.
-function historySlotRowIndex(rows, n) {
-  var list = rows || [], k = 0
-  for (var i = 0; i < list.length; i++) if (!list[i].pinned && ++k === n) return i
-  return -1
-}
-
-// Key hint on a row (1.26.0): "Alt+N" for history rows 1..9, "Alt+Shift+N"
-// for pinned rows 1..9. Kept for older callers; 1.28.0 uses pinHint.
-function slotHint(pinned, slot, pinnedCount) {
-  if (pinned) return slot >= 1 && slot <= 9 ? "Alt+Shift+" + slot : ""
-  var n = slot - (pinnedCount | 0)
-  return n >= 1 && n <= 9 ? "Alt+" + n : ""
-}
-
-// 1.28.0: Alt+1..9 = pinned item 1..9, in the popup and (with the Hyprland
-// bind) anywhere. "Pin N" is the Nth pinned entry in history order, the same
-// one `clipboard.sh copy-pinned N` (paste-pinned.sh) takes, so the number
-// does not change while you search. History rows have no number.
-function pinHistoryIndex(history, n) {
-  var values = Array.isArray(history) ? history : [], k = 0
-  if (!(n >= 1 && n <= 9)) return -1
-  for (var i = 0; i < values.length; i++) if (values[i] && values[i].pinned === true && ++k === n) return i
-  return -1
-}
-// Pin number (1-based) of history entry `index`, or 0 when it is not pinned.
-function pinNumber(history, index) {
-  var values = Array.isArray(history) ? history : []
-  if (!values[index] || values[index].pinned !== true) return 0
-  var k = 0
-  for (var i = 0; i <= index; i++) if (values[i] && values[i].pinned === true) k++
-  return k
-}
-function pinHint(history, index) {
-  var n = pinNumber(history, index)
-  return n >= 1 && n <= 9 ? "Alt+" + n : ""
-}
-
 // Unpinned entries: what "Clear history" deletes (pins stay).
 function unpinnedCount(history) {
   var values = Array.isArray(history) ? history : [], n = 0
@@ -1013,13 +973,6 @@ function pinnedCount(history) {
 // (nf-md-cellphone_check), anything else = crossed-out phone.
 function phoneGlyph(state) {
   return state === "online" ? "󱟽" : "󰥐"
-}
-
-// Alt+N: display index of the Nth row (top to bottom), or -1.
-function slotRowIndex(rows, slot) {
-  var list = rows || []
-  for (var i = 0; i < list.length; i++) if (list[i].slot === slot) return i
-  return -1
 }
 
 // Row actions (send, pin, trash) on the selected row, by keyboard.
@@ -1258,6 +1211,59 @@ function ocrSuggestions(hints, installed, dismissed) {
   }
   return out
 }
+// 1.29.0, dev only: a demo banner suggestion for testing the first-run
+// banner on a machine where nothing would be suggested (IPC ocrBannerDemo).
+// Uses `code` when it is a known, not installed language, else the first
+// known language that is not installed. null when everything is installed.
+function ocrDemoSuggestion(installed, code) {
+  var have = installed || []
+  var pick = null
+  for (var i = 0; i < OCR_LANGUAGES.length; i++) {
+    var l = OCR_LANGUAGES[i]
+    if (have.indexOf(l.code) >= 0) continue
+    if (l.code === code) { pick = l; break }
+    if (!pick && l.code !== "eng") pick = l
+  }
+  if (!pick) return null
+  return { code: pick.code, name: pick.name, source: "demo", demo: true,
+           cmd: "sudo pacman -S tesseract-data-" + pick.code,
+           text: "Looks like you also use " + pick.name + " (demo banner). Install OCR for it?" }
+}
+// ---- global shortcuts from the plugin (1.29.0, global-keys.sh) -----------
+// "Alt+V", "Alt+Shift+1" … → "Alt+V, Alt+Shift+1…9, 0" (runs in 1…9, 0 order).
+function keyLabels(labels) {
+  var order = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], other = [], digits = []
+  ;(labels || []).forEach(function(l) {
+    var m = /^Alt\+Shift\+(\d)$/.exec(l)
+    if (m) digits.push(order.indexOf(m[1])); else other.push(l)
+  })
+  digits.sort(function(a, b) { return a - b })
+  var parts = [], i = 0
+  while (i < digits.length) {
+    var j = i
+    while (j + 1 < digits.length && digits[j + 1] === digits[j] + 1) j++
+    parts.push(j - i >= 2 ? order[digits[i]] + "…" + order[digits[j]] : (j > i ? order[digits[i]] + ", " + order[digits[j]] : order[digits[i]]))
+    i = j + 1
+  }
+  if (parts.length) other.push("Alt+Shift+" + parts.join(", "))
+  return other.join(", ")
+}
+// global-keys.sh output ("label<TAB>state<TAB>detail" lines) → summary.
+function globalKeysSummary(text) {
+  var active = [], taken = [], errors = []
+  String(text || "").split("\n").forEach(function(line) {
+    var f = line.split("\t")
+    if (f.length < 2) return
+    if (f[1] === "bound" || f[1] === "ours") active.push(f[0])
+    else if (f[1] === "taken") taken.push(f[0])
+    else if (f[1] === "error") errors.push(f[2] || "error")
+  })
+  var out = []
+  if (active.length) out.push("Active: " + keyLabels(active))
+  if (taken.length) out.push("Already bound in your Hyprland config, left alone: " + keyLabels(taken))
+  if (errors.length) out.push("Could not set: " + errors[0])
+  return { active: active, taken: taken, errors: errors, text: out.join(". ") }
+}
 // state.json "ocrDismissed": only plain language codes survive.
 function ocrDismissedOf(v) {
   return Array.isArray(v) ? v.filter(function(c) { return typeof c === "string" && /^[a-z_]{2,10}$/.test(c) }) : []
@@ -1274,7 +1280,7 @@ function feedbackPayload(text, version) {
 function feedbackResult(exitCode, body) {
   var r = null
   try { r = JSON.parse(String(body || "")) } catch (e) { r = null }
-  if (exitCode === 0 && r && r.ok === true) return { ok: true, note: "Sent, thanks!" }
+  if (exitCode === 0 && r && r.ok === true) return { ok: true, note: "Feedback sent, thanks! Timon reads every message." }
   if (r && r.error === "slow down") return { ok: false, note: "Too many: try again in a minute" }
   if (r && r.error === "too long") return { ok: false, note: "Too long (max 4000 characters)" }
   if (exitCode === 6 || exitCode === 7 || exitCode === 28) return { ok: false, note: "Not sent: offline? Text kept" }
@@ -1287,6 +1293,39 @@ function feedbackResultFromCurl(out) {
   var nl = s.lastIndexOf("\n")
   var code = parseInt(nl >= 0 ? s.slice(nl + 1) : s, 10)
   return feedbackResult(isNaN(code) ? -1 : code, nl >= 0 ? s.slice(0, nl) : "")
+}
+
+// ---- Alt+Shift+1…9, 0 slots (1.29.0) -------------------------------------
+// Ten slots, the same in the popup and from anywhere (paste-slot.sh):
+// pinned items first, in their order, then the newest history items fill
+// what is left. 9 pins: Alt+Shift+0 = newest history item; 4 pins:
+// Alt+Shift+5…9, 0 = history items 1…6. n is 1…10 (key 0 = 10).
+// Must match `clipboard.sh copy-slot`.
+function slotHistoryIndex(history, n) {
+  var values = Array.isArray(history) ? history : []
+  if (!(n >= 1 && n <= 10)) return -1
+  var order = []
+  for (var i = 0; i < values.length; i++) if (values[i] && values[i].pinned === true) order.push(i)
+  for (var j = 0; j < values.length && order.length < n; j++) if (values[j] && values[j].pinned !== true) order.push(j)
+  return n <= order.length ? order[n - 1] : -1
+}
+// Slot (1…10) of history entry `index`, or 0.
+function slotOf(history, index) {
+  for (var n = 1; n <= 10; n++) if (slotHistoryIndex(history, n) === index) return n
+  return 0
+}
+function slotKey(n) { return n === 10 ? "0" : String(n) }
+function slotHint(history, index) {
+  var n = slotOf(history, index)
+  return n ? "Alt+Shift+" + slotKey(n) : ""
+}
+// Key event -> slot 1…10 (0 when none). By keycode first (xkb 10…19 = the
+// 1…0 keys), so Shift and the layout (German Shift+1 = "!") do not matter.
+function slotFromKey(nativeScanCode, key) {
+  if (nativeScanCode >= 10 && nativeScanCode <= 19) return nativeScanCode - 9
+  if (key >= 0x31 && key <= 0x39) return key - 0x30
+  if (key === 0x30) return 10
+  return 0
 }
 
 if (typeof module !== "undefined") {
@@ -1335,9 +1374,11 @@ if (typeof module !== "undefined") {
     imageTextActions: imageTextActions,
     KEY: KEY,
     searchKeyAction: searchKeyAction,
-    slotRowIndex: slotRowIndex,
-    historySlotRowIndex: historySlotRowIndex,
     slotHint: slotHint,
+    slotHistoryIndex: slotHistoryIndex,
+    slotOf: slotOf,
+    slotKey: slotKey,
+    slotFromKey: slotFromKey,
     unpinnedCount: unpinnedCount,
     pinnedCount: pinnedCount,
     phoneGlyph: phoneGlyph,
@@ -1381,12 +1422,12 @@ if (typeof module !== "undefined") {
     clickActionOf: clickActionOf,
     dragPlan: dragPlan,
     searchFilterExamples: SEARCH_FILTER_EXAMPLES,
-    pinHistoryIndex: pinHistoryIndex,
-    pinNumber: pinNumber,
-    pinHint: pinHint,
     ocrInstallArgv: ocrInstallArgv,
     ocrHintLanguage: ocrHintLanguage,
     ocrSuggestions: ocrSuggestions,
+    ocrDemoSuggestion: ocrDemoSuggestion,
+    keyLabels: keyLabels,
+    globalKeysSummary: globalKeysSummary,
     ocrDismissedOf: ocrDismissedOf,
     feedbackPayload: feedbackPayload,
     feedbackResult: feedbackResult,

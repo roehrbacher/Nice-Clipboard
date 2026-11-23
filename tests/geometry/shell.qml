@@ -89,9 +89,9 @@ ShellRoot {
         console.log("GEO headings " + hs.map(function(x){var p=x.mapToItem(ref,0,0);return x.text+"@x="+p.x+",y="+p.y+",h="+x.height+",px="+x.font.pixelSize}).join(" | "))
         var seps = []; find(list[0], "clipSep", seps)
         console.log("GEO separators visible=" + seps.filter(function(x){return x.visible}).length)
-        clip.infoOpen = true
+        clip.openSettingsWindow("history")
         later2.cb = function() {
-          var pills = []; for (var w2 = 0; w2 < clip.children.length; w2++) find(clip.children[w2], "clipKeepPill", pills)
+          var pills = []; find(clip.settingsWindowRef.contentItem, "clipKeepPill", pills)
           pills = pills.filter(function(x){return x.visible})
           var r0 = pills.length ? pills[0].parent : null
           console.log("GEO keep pills " + pills.map(function(x){var p=x.mapToItem(r0,0,0);return x.text+(x.active?"*":"")+"@x="+p.x+",y="+p.y+",w="+x.width+",h="+x.height}).join(" | "))

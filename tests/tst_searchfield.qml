@@ -12,7 +12,6 @@ Item {
   height: 60
   property var actions: []
   property var copied: []
-  property string pendingSlot: ""
   property bool rowPinned: false
   property bool armed: false
 
@@ -28,9 +27,11 @@ Item {
         ctrl: (event.modifiers & Qt.ControlModifier) !== 0,
         alt: (event.modifiers & Qt.AltModifier) !== 0,
         shift: (event.modifiers & Qt.ShiftModifier) !== 0,
+        slot: ClipboardHistory.slotFromKey(event.nativeScanCode, event.key),
         hasSelection: field.selectedText.length > 0
       })
       if (action === "") return
+      if (action === "ignore") { event.accepted = true; return }
       if (action === "copySelection") root.copied = root.copied.concat([field.selectedText])
       else if (action === "cutSelection") {
         root.copied = root.copied.concat([field.selectedText])
@@ -38,7 +39,6 @@ Item {
       } else if (action === "clearSearch") field.text = ""
       else {
         if (action !== "delete") root.armed = false
-        if (action === "slot") root.pendingSlot = action
         if (action === "delete") {
           // Same rule as Clipboard.qml requestDelete()
           if (ClipboardHistory.deleteAction(root.rowPinned, root.armed) === "arm") action = "arm"
@@ -47,13 +47,6 @@ Item {
         root.actions = root.actions.concat([action])
       }
       event.accepted = true
-    }
-    Keys.onReleased: function(event) {
-      if (root.pendingSlot !== "" && ClipboardHistory.isModifierKey(event.key)) {
-        root.actions = root.actions.concat(["paste:" + root.pendingSlot])
-        root.pendingSlot = ""
-        event.accepted = true
-      }
     }
   }
 
@@ -65,7 +58,6 @@ Item {
       field.text = ""
       root.actions = []
       root.copied = []
-      root.pendingSlot = ""
       root.rowPinned = false
       root.armed = false
       field.forceActiveFocus()
@@ -126,8 +118,8 @@ Item {
       keyClick(Qt.Key_Down)
       keyClick(Qt.Key_Up)
       keyClick(Qt.Key_Return)
-      keyClick(Qt.Key_3, Qt.AltModifier)
-      compare(root.actions, ["down", "up", "enter", "slot", "paste:slot"], "Alt+3 pastes once Alt is up")
+      keyClick(Qt.Key_3, Qt.AltModifier | Qt.ShiftModifier)
+      compare(root.actions, ["down", "up", "enter", "slot"], "Alt+Shift+3 = slot 3 (pastes at once)")
       compare(field.text, "x")
     }
 
@@ -145,13 +137,14 @@ Item {
       compare(root.actions, [], "Ctrl+N no longer pastes")
     }
 
-    function test_altN_pastes_on_release() {
-      // (QtTest presses/releases the modifier key itself around a key with modifiers.)
-      keyPress(Qt.Key_1, Qt.AltModifier)
-      keyRelease(Qt.Key_1)
-      compare(root.actions, ["slot"], "nothing pasted while Alt is still held")
-      keyRelease(Qt.Key_Alt)
-      compare(root.actions, ["slot", "paste:slot"], "Alt released: paste, same as Enter")
+    function test_altShiftN_is_a_slot_plain_altN_is_not() {
+      // 1.29.0: Alt+Shift+1…9, 0 are the slots; plain Alt+N does nothing.
+      keyClick(Qt.Key_1, Qt.AltModifier)
+      compare(root.actions, [], "plain Alt+1 is no shortcut")
+      keyClick(Qt.Key_1, Qt.AltModifier | Qt.ShiftModifier)
+      keyClick(Qt.Key_0, Qt.AltModifier | Qt.ShiftModifier)
+      compare(root.actions, ["slot", "slot"], "Alt+Shift+1 and Alt+Shift+0")
+      compare(field.text, "", "no digit typed into the search")
     }
 
     function test_pinned_delete_needs_two_presses() {

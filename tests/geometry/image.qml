@@ -50,12 +50,12 @@ ShellRoot {
     }
     var q = ["type:image", "invoice", "menu", "app:kitty", "is:pinned", "<2h", "type:link today", "type:screenshot"]
     for (var k = 0; k < q.length; k++) { clip.setFilter(q[k]); console.log("IMG filter '" + q[k] + "' -> " + clip.displayModelCount()) }
-    clip.setFilter(""); clip.infoOpen = true; t3.start()
+    clip.setFilter(""); clip.openSettingsWindow("filters"); t3.start()
   }
   Timer { id: t3; interval: 800; onTriggered: shell.info() }
   function texts(item, out) { if (!item) return; if (item.text !== undefined && String(item.text).indexOf("is:pinned") >= 0) out.push(item); var k = item.children || []; for (var i = 0; i < k.length; i++) texts(k[i], out); if (item.contentItem && item.contentItem !== item) texts(item.contentItem, out) }
   function info() {
-    var o = []; for (var w = 0; w < clip.children.length; w++) texts(clip.children[w], o)
+    var o = []; texts(clip.settingsWindowRef.contentItem, o)
     console.log("IMG info " + o.map(function(x) { return "'" + x.text + "' w=" + x.width + " implicit=" + x.implicitWidth + (x.truncated ? " TRUNCATED" : " fits") }).join(" | "))
     Qt.quit()
   }

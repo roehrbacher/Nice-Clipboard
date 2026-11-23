@@ -12,7 +12,7 @@
 # How: while a queue is armed, Ctrl+V and Esc are bound at runtime with
 # `hyprctl eval hl.bind(...)` (removed again with hl.unbind when the queue
 # ends). Ctrl+V runs `next` detached: it puts item k on the clipboard
-# (wl-copy) and sends Shift+Insert with explicit mods, like paste-pinned.sh /
+# (wl-copy) and sends Shift+Insert with explicit mods, like paste-slot.sh /
 # Omarchy's universal paste, so the held Ctrl doesn't merge in. Watching the
 # clipboard for "was pasted" (wl-copy --paste-once) is not used: every
 # clipboard watcher (this plugin, fluxd) reads each new copy and would use

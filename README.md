@@ -8,7 +8,7 @@ A clipboard history for [Omarchy](https://omarchy.org) that looks like it ships 
 
 - **Flux integration:** send any item to your phone, see what came from it, and incognito pauses phone sync.
 - **Paste queue:** pick several items in order, then paste them one after another.
-- **Nice shortcuts:** Alt+V opens it, Alt+1…9 pastes straight away, everything works from the keyboard.
+- **Nice shortcuts:** Alt+V opens it, Alt+Shift+1…9, 0 pastes your pins and newest items from anywhere, everything works from the keyboard.
 - **Screenshot text recognition (OCR):** copy the text out of any copied screenshot.
 - **QR code recognition:** open a QR link, or copy a Wi-Fi password straight from a QR code.
 - **Omarchy theme colours:** follows your current theme, popup sits under its bar icon.
@@ -63,19 +63,18 @@ imported once on first start. To hear about upstream changes, run
   The phone button's icon and tooltip show the Flux state ("<phone> connected
   via Flux", "No phone connected", "Flux paused (incognito)", "Flux not
   running"); clicking it closes the popup and opens Flux (`flux-cli open`). The gear opens the settings
-  view, split into sections with divider lines like Omarchy's Display panel:
-  General (incognito, click action), History (delete after, clear), Flux
-  (phone, last sync, "Send current clipboard" with Ctrl+S), Text recognition
-  (OCR languages), Search filters, Shortcuts, Feedback. The header then says
-  "Settings" with the plugin version next to it, and the search button
-  becomes a back arrow. Next to the gear, a second button (󰏌, "Settings in a
-  window") opens the settings in their own window (about 900 × 650, tiled
-  like Flux): a sidebar of sections (with "Settings" and the version on top)
-  and one section at a time on the right, with its title and a short
-  description. ↑ ↓ pick a section, Esc closes. Both stay for now, to compare.
+  window (about 900 × 650, tiled like Flux; the popup closes): a sidebar of
+  sections (with "Settings" and the version on top) and one section at a time
+  on the right, with its title and a short description: General (incognito,
+  click action), History (delete after, clear), Flux (phone, last sync, "Send
+  current clipboard"), Text recognition (OCR languages), Search filters,
+  Shortcuts, Feedback. ↑ ↓ pick a section, Esc closes. Closing it any other
+  way (Super+W, the window's close button) works too; the gear opens it again.
 - **Flux state on the phone button:** a phone with a check when a phone is
   connected, a crossed-out phone otherwise (paused: accent colour). Hovering the phone action
-  of a row shows "Send via Flux".
+  of a row shows "Send via Flux": it sends only that item to the phone
+  (straight to fluxd), your computer's clipboard and the history order stay
+  as they are.
 - **Incognito:** nothing new is saved (text or images) until you turn it
   off; a small "Incognito" badge in the popup shows it. Survives a restart.
 - **Incognito pauses Flux too:** if [Flux](https://github.com/bjarneo/flux)
@@ -116,16 +115,25 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
   copies the password, any other QR code copies its text. Without the tools
   the buttons simply don't appear: `sudo pacman -S tesseract tesseract-data-eng tesseract-data-deu zbar`.
 - OCR languages (Settings > Text recognition, sorted by name): a click on one
-  installs it. Omarchy's floating terminal opens with
-  `omarchy-pkg-add tesseract-data-<code>` (`pacman -S --needed`, the signed
-  Arch package) and asks for your password there; the plugin never holds
-  root. It re-reads the installed languages every 3 s until the new one
+  installs it. Omarchy's floating terminal opens with the plugin's
+  `ocr-install.sh`, which first shows what it will run, e.g. "Nice Clipboard
+  will install German text recognition: `sudo pacman -S --needed
+  tesseract-data-deu`", and waits: Enter continues (then sudo asks for your
+  password), Ctrl+C cancels. pacman installs the signed Arch package, which
+  then gets updated with the rest of your system. When it is done the window
+  says so and closes after 5 s. The plugin never holds root. It re-reads the installed languages every 3 s until the new one
   shows up and then says so.
 - Missing languages are suggested: the plugin looks (read-only) at your
   locale, Hyprland keyboard layouts and hunspell dictionaries. A small
   banner at the top of the popup says e.g. "Based on your keyboard layout:
   install text recognition (OCR) for German?" with **Install** and **Not
   now**; settings show the same. Not now hides it for good (both places).
+  To see the banner on a machine where nothing is suggested (developer
+  test): `omarchy-shell shell call timon.clipboard ocrBannerDemo x` (or a code
+  like `fra`), then open the popup; it goes away with Not now or when the
+  popup closes, and nothing is saved. To bring back real suggestions you
+  dismissed: `f=~/.local/share/timon.clipboard/state.json; jq '.ocrDismissed = []' "$f" > "$f.new" && mv "$f.new" "$f"`
+  (the plugin watches that file and picks it up right away).
 - Search filters, combinable with normal search text: `type:image|screenshot|text|link|color|file`,
   `app:<window class>` (recorded from 1.16.0 on), `is:pinned`, `today`, `yesterday`, `<30m`, `<2h`, `<3d`.
 
@@ -171,7 +179,7 @@ Settings > Feedback: type an idea, bug or wish and press Send (or
 Ctrl+Enter). The text is posted to the Nice Clipboard feedback Worker at
 `https://feedback.roehrbacher.com/feedback` (a Cloudflare Worker that files it
 as an issue in a private repo; rate limited, no IP stored) and the box says
-"Sent, thanks!". No browser, no GitHub account. Only the text and the plugin
+"Feedback sent, thanks! Timon reads every message." with a green check. No browser, no GitHub account. Only the text and the plugin
 version are sent. Ctrl+Shift+Enter opens a prefilled GitHub issue in the
 browser instead. If sending fails, the text stays in the box.
 
@@ -226,7 +234,7 @@ older names `togglePrivate` and `setPrivateMode` still work.
 | Super+Shift+V | the same (GNOME default key, optional binding) |
 | Super+Ctrl+V | the same (stock Omarchy key, routed to this plugin) |
 | **Super+Shift+Ctrl+V** | incognito on/off from anywhere (with a notification) |
-| Alt+Shift+1…9 | paste pinned item N from anywhere (Hyprland bind in the shared config, runs `paste-pinned.sh`; closes the popup first if it is open) |
+| Alt+Shift+1…9, 0 | (added by the plugin, see Install) paste slot 1…10 from anywhere: your pinned items first (in their order), then the newest history items fill the rest. With 4 pins, Alt+Shift+5 is the newest history item and Alt+Shift+0 the 6th. (runs `paste-slot.sh`; closes the popup first if it is open) |
 
 In the popup:
 
@@ -239,11 +247,11 @@ In the popup:
 | Alt+Enter | open (URL in browser, text in editor, image in editor) |
 | Ctrl+click / Ctrl+Space | add the row to the paste queue (numbered 1, 2, 3 …); again takes it out |
 | Ctrl+click / Ctrl+Space 2+ items, then close the popup (Enter, click, Esc twice or click outside) | start the paste queue: every Super+V (or Ctrl+V) pastes the next item, Esc cancels |
-| Alt+1…9 | paste pinned item N (the same pin Alt+Shift+N pastes anywhere, also while searching); pinned rows show their key. History items have no number key |
+| Alt+Shift+1…9, 0 | paste slot N, the same item as from anywhere (also while searching); the 10 slotted rows show their key |
 | → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
 | Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
 | Delete (or the trash icon) | delete the item (with search text selected: delete that text). A pinned item turns red first: press Del again within 3 s to delete it; any other key cancels |
-| Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in the settings view: send the current clipboard |
+| Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in Settings > Flux: send the current clipboard |
 | Shift+Delete | clear history (asks first; only unpinned items are counted and deleted, pinned items stay) |
 | Ctrl+I (or the Incognito switch in the footer, or right-click the bar icon) | incognito on/off |
 | Backspace, Ctrl+Backspace, ← →, Ctrl+Z | edit the search |
@@ -251,7 +259,7 @@ In the popup:
 | Shift+← → / Shift+Home End, Ctrl+A, mouse drag | select search text |
 | Ctrl+C / Ctrl+X (with search text selected) | copy / cut it to the clipboard (becomes a new history item) |
 | Ctrl+V | paste into the search |
-| the gear icon in the footer | settings view: ↑ ↓ pick a setting, ← → change it, Enter toggles it, Esc (or the back arrow) goes back to the list |
+| the gear icon in the footer | open the settings window (↑ ↓ pick a section, Esc closes) |
 | Esc | clear the search, then close |
 
 ## Install
@@ -262,10 +270,15 @@ omarchy plugin add https://github.com/roehrbacher/Nice-Clipboard --enable
 
 The plugin ID is `timon.clipboard`. Enabling it switches off the stock
 `omarchy.clipboard` (it is a clone of it), so only one clipboard watcher runs.
-Then add the shortcuts to `~/.config/hypr/bindings.lua`:
+Alt+V and Alt+Shift+1…9, 0 work right away: the plugin adds them to the
+running Hyprland itself (Settings > Shortcuts > Global shortcuts, on by
+default). No config file is edited. They are added again after every
+Hyprland config reload, only on keys that are still free (a key your config
+already uses is left alone and listed there), and removed when you switch the
+setting off or disable / remove the plugin. Optional extra keys go in
+`~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("ALT + V", "Clipboard history", "omarchy-shell shell toggle timon.clipboard")
 o.bind("SUPER + SHIFT + V", "Clipboard history", "omarchy-shell shell toggle timon.clipboard")  -- optional, GNOME key
 o.bind("SUPER + SHIFT + CTRL + V", "Clipboard incognito", "omarchy-shell shell call timon.clipboard toggleIncognito x")
 ```
@@ -289,25 +302,26 @@ rm -rf ~/.local/share/timon.clipboard      # optional: deletes the saved history
 omarchy restart shell
 ```
 
-Remove the bindings too. Super+Ctrl+V then opens the stock manager again.
+Remove any bindings you added yourself too (the plugin's own Alt+V and
+Alt+Shift+1…9, 0 go away with it). Super+Ctrl+V then opens the stock manager again.
 To only switch it off and keep it installed: `omarchy plugin disable timon.clipboard`.
 
 ## Tests
 
 ```bash
-node tests/history.test.js     # history model: limit, pins, search, clear, key routing, count label, delete confirm, Ctrl/Alt+N, popup size, Flux origin, phone name, last sync, phone button state and tooltip
-QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_searchfield.qml  # search field keys, Ctrl/Alt+N paste on release, pinned Del twice (real Qt)
+node tests/history.test.js     # history model: limit, pins, search, clear, key routing, count label, delete confirm, Ctrl+N, Alt+Shift slots, popup size, Flux origin, phone name, last sync, phone button state and tooltip
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_searchfield.qml  # search field keys, pinned Del twice (real Qt)
 QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_kinetic.qml      # wheel step, touchpad 1:1, momentum after lift-off
 bash tests/capture.test.sh     # capture: incognito, password hint, size caps, 0600/0700, import, prune
 bash tests/flux-pause.test.sh  # Flux pause/resume with a stub systemctl (never touches the real fluxd)
 bash tests/queue.test.sh       # paste queue (stub hyprctl / wl-copy / notifier), incl. quiet cancel
 bash tests/version.test.sh      # Clipboard.qml version (sent with feedback) = manifest = CHANGELOG
 bash tests/ocr-hints.test.sh    # OCR language hints from locale / LANGUAGE / locale.conf / keyboard layout (stub hyprctl)
-bash tests/geometry/run-v128.sh # 1.28.0 offscreen: OCR banner + install (stubs), Alt+N pins, version header, sidebar settings window, toast-sized OCR preview (writes PNGs)
-bash tests/geometry/run-v127.sh # 1.27.0 offscreen: OCR suggestion copy/dismiss, direct feedback to a local fake Worker (writes PNGs)
-bash tests/geometry/run-v126.sh # 1.26.0 offscreen: Alt+1 pastes the first history row, clear count, phone glyph, settings window (writes PNGs)
-bash tests/geometry/run-v125.sh # 1.25.0 offscreen: settings sections and dividers, back arrow, OCR preview notification (writes a PNG)
-bash tests/geometry/run-v121.sh # 1.21.0 offscreen: queue pill, queue dropped on pick/buttons, notifications, OCR help
+bash tests/ocr-install.test.sh  # OCR install script: shows the command, waits for Enter, rejects odd codes (dry run, no sudo)
+bash tests/global-keys.test.sh  # plugin-added global keys: only free keys bound, taken ones reported, remove drops only ours (stub hyprctl)
+bash tests/send.test.sh         # Send via Flux: fluxd socket only, no wl-copy, history untouched (fake fluxd)
+bash tests/slots.test.sh        # Alt+Shift slots: copy-slot / paste-slot.sh (and old paste-pinned.sh) = the popup's mapping
+bash tests/geometry/run-v129.sh # 1.29.0 offscreen: slot hints and keys, demo banner, settings window reopen after Super+W, feedback sent state (writes PNGs)
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,

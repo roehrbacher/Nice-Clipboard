@@ -2,6 +2,20 @@
 
 Newest first. Older history is in the git log.
 
+## 1.29.0
+
+- Alt+Shift+1…9 and Alt+Shift+0 are 10 slots, the same everywhere and in the popup: your pinned items first (in their order), then the newest history items fill the rest. With 9 pins Alt+Shift+0 is the newest history item; with 4 pins Alt+Shift+5…9, 0 are history items 1…6. Every slotted row shows its "Alt+Shift+N". Plain Alt+N in the popup no longer does anything. Keys are read by keycode, so the German layout's Shift+1 = "!" works.
+- New `paste-slot.sh <1-9|0>` (and `clipboard.sh copy-slot <1-10>`) for the global bind; `paste-pinned.sh` still works and runs it, so the existing Alt+Shift+1…9 bind gets the new mapping. Alt+Shift+0 comes from the plugin's own global keys (below). `copy-pinned` is gone.
+- Settings only in their window: the gear opens it (and closes the popup). The settings page inside the popup, its back arrow, the version in the popup header and the second "Settings in a window" button are gone.
+- Fix: after closing the settings window with Super+W (or its close button) the gear could not open it again. The window is now created when needed and dropped when it closes.
+- Global shortcuts without editing any config: the plugin adds Alt+V and Alt+Shift+1…9, 0 to the running Hyprland (`global-keys.sh`, `hyprctl eval` + `hl.bind`) when it loads and after each Hyprland config reload, only on keys that are free; keys your config already binds are left alone and listed in Settings > Shortcuts. Switching the setting off (state.json `globalKeys`) or disabling / removing the plugin removes them. On Timon's machines this adds only Alt+Shift+0 (the rest are in the shared config).
+- Fix: "Send via Flux" on a row put the item on this computer's clipboard (and moved it to the top of the history) before sending. It now goes straight to fluxd's socket (`clipboard.send`, the text over the socket, never argv); the local clipboard and history are untouched.
+- Feedback sent: a green check and "Feedback sent, thanks! Timon reads every message."
+- OCR language install: the floating terminal runs the plugin's own `ocr-install.sh`, which first says "Nice Clipboard will install German text recognition:" with the exact `sudo pacman -S --needed tesseract-data-deu` command and waits for Enter (Ctrl+C cancels). Afterwards it says "Done, you can close this window" and closes after 5 s. `omarchy-pkg-add` is no longer used.
+- OCR copy notification back to 1.25–1.27: up to 120 characters with "…", title "Copied text from screenshot", "Paste it with Super+V." on its own line.
+- Developer test for the first-run OCR banner: `omarchy-shell shell call timon.clipboard ocrBannerDemo x` shows a demo suggestion until Not now or the popup closes (nothing saved).
+- Tests: superseded offscreen harnesses v118–v128 removed (they drove the popup settings page; still in git history); new `run-v129.sh`, `slots.test.sh` (was copy-pinned), `ocr-install.test.sh`, `send.test.sh`, `global-keys.test.sh`. Every offscreen harness stubs `global-keys.sh` and sets `NICE_CLIPBOARD_NO_GLOBAL_KEYS=1`, so tests never change the live Hyprland.
+
 ## 1.28.0
 
 - Feedback is sent directly: `feedbackEndpoint` is now the live Worker (`https://feedback.roehrbacher.com/feedback`), so Send posts the text (only when pressed) and shows "Sent, thanks!"; no browser or GitHub account. Ctrl+Shift+Enter still opens the prefilled GitHub issue. Test harnesses point it at a local fake Worker or a closed port, never the live one.

@@ -7,6 +7,7 @@
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import QtQuick
 import qs.Commons
 import qs.Ui
@@ -20,31 +21,6 @@ Item {
   // Display panel's own pieces (qs.Ui PanelSeparator: 1px, foreground at
   // 12%; PanelSectionHeader: caption, bold, foreground darkened 1.4x) with
   // the same gaps (14 px around the rule, 6 px from header to content).
-  component SettingsHeading: Column {
-    property string title: ""
-    property bool first: false
-    // 1.28.0: the settings window shows its own page title instead.
-    property bool hidden: false
-    visible: !hidden
-    width: parent ? parent.width : 0
-    topPadding: first ? Style.space(2) : Style.space(12)
-    bottomPadding: Style.space(4)
-    spacing: Style.space(12)
-
-    PanelSeparator {
-      visible: !parent.first
-      width: parent.width
-      foreground: root.foreground
-    }
-
-    PanelSectionHeader {
-      text: parent.title
-      foreground: root.foreground
-      fontFamily: root.fontFamily
-      leftPadding: Style.space(10)
-    }
-  }
-
   // ---- settings (edit here) --------------------------------------------
   // Unpinned entries are deleted keepDays days after they were copied
   // (1, 2, 5, 10 or 20, picked in settings, saved in state.json). Pinned
@@ -71,10 +47,7 @@ Item {
   property bool cursorActive: false
   property bool clearConfirmOpen: false
   // Settings view (gear icon in the footer).
-  property bool infoOpen: false
-  property int infoIndex: 0
   // Keyboard order = on-screen order (1.25.0 sections).
-  readonly property var infoActions: ["incognito", "click", "keep", "clear", "send"]
   // Flux details for the settings view (from `flux-cli status --json`).
   property string phoneName: ""
   property int lastSync: 0
@@ -98,7 +71,6 @@ Item {
   property bool hasPinned: false
   property var history: []
   // Ctrl/Alt+N: display index waiting for the modifier release (-1 = none).
-  property int pendingPasteIndex: -1
   // Keyboard focus on a row action of the selected row (-1 = the row itself).
   property int actionFocus: -1
   readonly property var selectedActions: root.rowActions(root.selectedIndex, root.armedDeleteIndex, root.phoneOnline, displayModel.count)
@@ -135,7 +107,8 @@ Item {
   // the popup closes (any way except Esc, which clears the selection first);
   // a single Ctrl-selected row is just a normal pick.
   onOpenedChanged: {
-    if (root.opened) return
+    if (root.opened) { if (root.ocrDemo) root.ocrDemoShown = true; return }
+    if (root.ocrDemoShown) { root.ocrDemoArg = ""; root.ocrDemoShown = false }
     if (ClipboardHistory.queueOnPick(root.queueKeys.length)) root.startQueue()
     else if (root.queueKeys.length) root.queueKeys = []
   }
@@ -150,17 +123,24 @@ Item {
   // come from the locale, keyboard layouts and dictionaries (scan.sh
   // --langs "hints"); dismissed ones are kept in state.json.
   property var ocrDismissed: []
-  readonly property var ocrSuggest: root.ocrInfo.installed.length ? ClipboardHistory.ocrSuggestions(root.ocrInfo.hints, root.ocrInfo.installed, root.ocrDismissed) : []
-  // 1.28.0: a click installs a language in Omarchy's floating terminal
-  // (omarchy-pkg-add: pacman -S --needed, signed Arch package, your sudo
-  // password typed there). The plugin never holds root. Installed languages
+  readonly property var ocrSuggestReal: root.ocrInfo.installed.length ? ClipboardHistory.ocrSuggestions(root.ocrInfo.hints, root.ocrInfo.installed, root.ocrDismissed) : []
+  // 1.29.0, dev only: `omarchy-shell shell call timon.clipboard ocrBannerDemo x`
+  // shows a demo suggestion in the popup until it is dismissed or the popup
+  // closes after showing it. Nothing is written to state.json.
+  property string ocrDemoArg: ""
+  readonly property var ocrDemo: root.ocrDemoArg !== "" && root.ocrInfo.installed.length ? ClipboardHistory.ocrDemoSuggestion(root.ocrInfo.installed, root.ocrDemoArg) : null
+  property bool ocrDemoShown: false
+  readonly property var ocrSuggest: root.ocrDemo ? [root.ocrDemo].concat(root.ocrSuggestReal.filter(function(x) { return x.code !== root.ocrDemo.code })) : root.ocrSuggestReal
+  // A click installs a language in Omarchy's floating terminal through
+  // ocr-install.sh (1.29.0): it shows the exact pacman command and waits for
+  // Enter before sudo asks for the password. The plugin never holds root. Installed languages
   // are re-read every 3 s (up to 10 min) until the new one shows up.
   property string ocrInstalling: ""
   property string ocrInstallingName: ""
   property int ocrWatchTicks: 0
   function installOcrLanguage(lang) {
     if (!lang || lang.installed) return
-    var argv = ClipboardHistory.ocrInstallArgv(lang.code)
+    var argv = ClipboardHistory.ocrInstallArgv(lang.code, root.pluginDir + "/ocr-install.sh", lang.name)
     if (!argv.length) return
     root.ocrInstalling = lang.code
     root.ocrInstallingName = lang.name
@@ -168,7 +148,7 @@ Item {
     // The popup holds the keyboard; close it so the password can be typed.
     if (root.opened) root.close()
     Quickshell.execDetached(argv)
-    root.notify("󰗊", "Installing " + lang.name + " (OCR)", "Type your password in the terminal. Nice Clipboard picks it up when it is done.", 5000)
+    root.notify("󰗊", "Installing " + lang.name + " (OCR)", "Check the command in the terminal and press Enter. Nice Clipboard picks it up when it is done.", 5000)
     ocrWatchTimer.restart()
   }
   function ocrInfoUpdated() {
@@ -178,6 +158,7 @@ Item {
     root.ocrInstalling = ""
   }
   function dismissOcrSuggestion(code) {
+    if (root.ocrDemo && root.ocrDemo.code === code) { root.ocrDemoArg = ""; return }
     if (root.ocrDismissed.indexOf(code) >= 0) return
     root.ocrDismissed = root.ocrDismissed.concat([code])
     root.writeState()
@@ -279,7 +260,6 @@ Item {
     // 1.28.0: the OCR banner needs the languages on every open (cheap).
     if (!ocrLangProc.running) ocrLangProc.running = true
     root.opened = true
-    root.infoOpen = false
     root.filterText = ""
     root.searchExpanded = false
     root.selectedIndex = 0
@@ -291,31 +271,30 @@ Item {
     Qt.callLater(function() { searchInput.forceActiveFocus() })
   }
 
-  function openInfo(section) {
-    root.disarmDelete()
-    root.nowSec = Math.floor(Date.now() / 1000)
-    root.infoIndex = section === "flux" ? root.infoActions.indexOf("send") : 0
-    root.infoOpen = true
-    if (root.fluxPresent && !root.fluxPaused && !statusProc.running) statusProc.running = true
-    if (section === "flux") Qt.callLater(function() {
-      infoFlick.contentY = Math.max(0, Math.min(fluxSection.y, infoFlick.contentHeight - infoFlick.height))
-    })
-    else infoFlick.contentY = 0
-  }
-
-  // 1.26.0 try-out: the same settings in their own window (a normal
-  // toplevel, so Hyprland tiles it on the current workspace like Flux).
-  // The popup closes; Esc or the window's close key hides it again.
-  function openSettingsWindow() {
+  // Settings live only in their own window (1.29.0; the gear opens it). A
+  // normal toplevel, so Hyprland tiles it like Flux. The window is made by
+  // a Loader and dropped when it is closed (Esc, or Super+W = Hyprland
+  // killactive, which emits closed() but leaves visible = true: 1.26-1.28
+  // then could not show it again), so every open after a close gets a fresh one.
+  function openSettingsWindow(section) {
     root.disarmDelete()
     root.nowSec = Math.floor(Date.now() / 1000)
     if (root.fluxPresent && !root.fluxPaused && !statusProc.running) statusProc.running = true
     if (!ocrLangProc.running) ocrLangProc.running = true
-    root.infoIndex = 0
-    root.infoOpen = false
+    if (section !== undefined) {
+      var i = root.settingsSections.map(function(x) { return x.key }).indexOf(section)
+      if (i >= 0) root.settingsSection = i
+    }
     if (root.opened) root.close()
-    settingsWindow.visible = true
-    Qt.callLater(function() { settingsKeys.forceActiveFocus() })
+    if (settingsWindowLoader.item && !settingsWindowLoader.item.visible) settingsWindowLoader.active = false
+    settingsWindowLoader.active = true
+    if (settingsWindowLoader.item) settingsWindowLoader.item.visible = true
+    Qt.callLater(function() { if (root.settingsKeysRef) root.settingsKeysRef.forceActiveFocus() })
+  }
+  function closeSettingsWindow() {
+    root.settingsKeysRef = null
+    root.settingsPaneFlickRef = null
+    settingsWindowLoader.active = false
   }
 
   // Footer phone button: open Flux's own window (flux-cli open: its shell
@@ -325,7 +304,7 @@ Item {
     if (root.fluxPresent) {
       root.close()
       Quickshell.execDetached(["flux-cli", "open"])
-    } else root.openInfo("flux")
+    } else root.openSettingsWindow("flux")
   }
 
   // Send what is on the clipboard now to the phone (flux-cli clip).
@@ -334,12 +313,6 @@ Item {
     Quickshell.execDetached(["flux-cli", "clip"])
     root.lastSync = Math.floor(Date.now() / 1000)
     root.nowSec = root.lastSync
-  }
-
-  function closeInfo() {
-    root.infoOpen = false
-    root.disarmPointer()
-    Qt.callLater(function() { searchInput.forceActiveFocus() })
   }
 
   // Left/Right walk the auto-delete presets (clamped); Enter cycles.
@@ -355,11 +328,14 @@ Item {
   // the browser; the plugin needs no token, GitHub uses the browser login.
   readonly property string feedbackRepo: "roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.28.0"
+  readonly property string pluginVersion: "1.29.0"
   property string feedbackNote: ""
+  // 1.29.0: true after the Worker confirmed; the note gets a green check.
+  property bool feedbackSent: false
+  readonly property color successColor: "#4caf50"
   // Direct feedback (1.27.0, on since 1.28.0): Send posts the text to the
   // Nice Clipboard feedback Worker, which files it as an issue in a private
-  // repo (rate limited, no IP kept), and shows "Sent, thanks!": no browser,
+  // repo (rate limited, no IP kept), and shows "Feedback sent" with a green check: no browser,
   // no GitHub account. Only when Send is pressed. Empty = the prefilled
   // GitHub issue instead; Ctrl+Shift+Enter always opens GitHub.
   readonly property string feedbackEndpoint: "https://feedback.roehrbacher.com/feedback"
@@ -372,7 +348,7 @@ Item {
     return "https://github.com/" + root.feedbackRepo + "/issues/new?labels=feedback&title="
       + encodeURIComponent(title) + "&body=" + encodeURIComponent(body)
   }
-  // input: the feedback field that was used (popup page or settings window).
+  // input: the feedback field in the settings window.
   // viaGithub (Ctrl+Shift+Enter): always the browser link.
   function sendFeedback(input, viaGithub) {
     var t = input ? input.text.trim() : ""
@@ -382,46 +358,73 @@ Item {
       feedbackProc.payload = ClipboardHistory.feedbackPayload(t, root.pluginVersion)
       root.feedbackPendingInput = input
       root.feedbackNote = "Sending…"
+      root.feedbackSent = false
       feedbackProc.running = true
       return true
     }
     Quickshell.execDetached(["xdg-open", root.feedbackUrl(t)])
     input.text = ""
     root.feedbackNote = "Opened in your browser: submit it there"
-    if (!settingsWindow.visible) searchInput.forceActiveFocus()
     return true
   }
 
-  function runInfoAction(name) {
+  // Clickable settings rows (incognito, clear history) in the window.
+  // Clear history asks in the popup (its confirm lives there).
+  function runSettingsAction(name) {
+    if (name === "globalKeys") { root.globalKeys = !root.globalKeys; root.writeState(); root.applyGlobalKeys(); return }
     if (name === "incognito") root.setPrivate(!root.privateMode, false)
-    else if (name === "clear") { root.infoOpen = false; root.requestClearHistory() }
-    else if (name === "send") root.sendCurrentClipboard()
-    else if (name === "keep") root.stepKeepDays(1, true)
-    else if (name === "click") root.setClickAction(root.clickAction === "paste" ? "copy" : "paste")
-    else root.closeInfo()
+    else if (name === "clear") { root.open("{}"); root.requestClearHistory() }
   }
 
-  // Keys while the shortcuts & settings view is shown: ↑↓/Tab pick a
-  // setting, Enter/Space toggle it, PgUp/PgDn scroll, Esc goes back.
-  function handleInfoKey(event) {
-    var k = event.key
-    var n = root.infoActions.length
-    if ((event.modifiers & Qt.ControlModifier) && k === Qt.Key_S) root.sendCurrentClipboard()
-    else if (k === Qt.Key_Escape) root.closeInfo()
-    else if ((k === Qt.Key_Left || k === Qt.Key_Right) && root.infoActions[root.infoIndex] === "click") root.setClickAction(k === Qt.Key_Right ? "paste" : "copy")
-    else if ((k === Qt.Key_Left || k === Qt.Key_Right) && root.infoActions[root.infoIndex] === "keep") root.stepKeepDays(k === Qt.Key_Right ? 1 : -1, false)
-    else if (k === Qt.Key_Down || k === Qt.Key_Tab) root.infoIndex = (root.infoIndex + 1) % n
-    else if (k === Qt.Key_Up || k === Qt.Key_Backtab) root.infoIndex = (root.infoIndex + n - 1) % n
-    else if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) root.runInfoAction(root.infoActions[root.infoIndex])
-    else if (k === Qt.Key_PageDown) infoFlick.contentY = Math.min(Math.max(0, infoFlick.contentHeight - infoFlick.height), infoFlick.contentY + infoFlick.height * 0.8)
-    else if (k === Qt.Key_PageUp) infoFlick.contentY = Math.max(0, infoFlick.contentY - infoFlick.height * 0.8)
-    event.accepted = true
+  // 1.29.0: global shortcuts from the plugin itself (global-keys.sh): Alt+V
+  // and Alt+Shift+1…9, 0 are added to the running Hyprland on load and after
+  // every Hyprland config reload (which drops runtime binds), only where the
+  // key is still free; removed when switched off or when the plugin unloads.
+  // No config file is touched. Setting: Settings > Shortcuts (state.json
+  // "globalKeys", on by default).
+  property bool globalKeys: true
+  property bool globalKeysApplied: false
+  property var globalKeysInfo: ({ active: [], taken: [], errors: [], text: "" })
+  readonly property string globalKeysScript: pluginDir + "/global-keys.sh"
+  function applyGlobalKeys() {
+    root.globalKeysApplied = true
+    if (globalKeysProc.running) { globalKeysProc.again = true; return }
+    globalKeysProc.command = [root.globalKeysScript, root.globalKeys ? "apply" : "remove"]
+    globalKeysProc.running = true
+  }
+  Process {
+    id: globalKeysProc
+    property bool again: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.globalKeysInfo = root.globalKeys ? ClipboardHistory.globalKeysSummary(String(text)) : ({ active: [], taken: [], errors: [], text: "" })
+        if (globalKeysProc.again) { globalKeysProc.again = false; Qt.callLater(root.applyGlobalKeys) }
+      }
+    }
+  }
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event && String(event.name) === "configreloaded" && root.globalKeys) globalKeysReapply.restart()
+    }
+  }
+  Timer { id: globalKeysReapply; interval: 400; onTriggered: root.applyGlobalKeys() }
+  // First run without a state.json: loadState never runs, so apply anyway.
+  Timer { interval: 4000; running: root.ready && !root.globalKeysApplied; onTriggered: if (!root.globalKeysApplied) root.applyGlobalKeys() }
+  // Unloaded: a shell restart or hot reload loads us again right away (and
+  // re-applies), so only remove our keys when the plugin is really disabled
+  // or removed. The script is read first because removal deletes its folder.
+  function removeGlobalKeysIfGone() {
+    if (!root.globalKeysApplied || !root.globalKeys) return
+    Quickshell.execDetached(["bash", "-c",
+      'src=$(cat "$0") || exit 0; sleep 3; '
+      + 'if omarchy-plugin-list --json 2>/dev/null | jq -e \'any(.[]; .id == "timon.clipboard" and .enabled == true)\' >/dev/null; then exit 0; fi; '
+      + 'exec bash -c "$src" global-keys.sh remove', root.globalKeysScript])
   }
 
   function close() {
-    root.infoOpen = false
     root.disarmDelete()
-    root.pendingPasteIndex = -1
     root.cancelClearHistory()
     root.opened = false
   }
@@ -446,6 +449,18 @@ Item {
   function toggleIncognito(arg) { return root.togglePrivate(arg) }
   function setIncognito(arg) { return root.setPrivateMode(arg) }
 
+  // Dev only (1.29.0): force the first-run OCR banner. Arg: a Tesseract code
+  // (e.g. fra) or anything else for the first language not installed; "off"
+  // removes it. Open the popup to see it.
+  function ocrBannerDemo(arg) {
+    root.ocrDemoShown = false
+    root.ocrDemoArg = String(arg) === "off" ? "" : (/^[a-z_]{3,8}$/.test(String(arg)) ? String(arg) : "any")
+    if (root.ocrDemoArg === "") return "off"
+    if (root.opened) root.ocrDemoShown = true
+    if (!ocrLangProc.running) ocrLangProc.running = true
+    return "demo banner on: open the popup"
+  }
+
   function status(arg) {
     return JSON.stringify({ private: root.privateMode, incognito: root.privateMode, fluxPaused: root.fluxPaused, open: root.opened, entries: root.history.length, shown: displayModel.count })
   }
@@ -468,7 +483,7 @@ Item {
   }
 
   function writeState() {
-    stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction, ocrDismissed: root.ocrDismissed }) + "\n")
+    stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction, ocrDismissed: root.ocrDismissed, globalKeys: root.globalKeys }) + "\n")
   }
 
   function loadState(raw) {
@@ -477,6 +492,8 @@ Item {
     root.privateMode = st.private === true
     root.clickAction = ClipboardHistory.clickActionOf(st.clickAction)
     root.ocrDismissed = ClipboardHistory.ocrDismissedOf(st.ocrDismissed)
+    var gk = st.globalKeys !== false
+    if (gk !== root.globalKeys || !root.globalKeysApplied) { root.globalKeys = gk; root.applyGlobalKeys() }
     var days = ClipboardHistory.keepDaysOf(st.keepDays)
     if (days !== root.keepDays) { root.keepDays = days; root.pruneOld() }
     // Also runs at shell start: resumes Flux if private mode ended while the
@@ -1012,34 +1029,18 @@ Item {
     resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
   }
 
-  // Alt+N (1.28.0): pinned item N (also with Shift), the same pin the
-  // global bind pastes, whatever the search shows. Pastes at once: the
-  // helper now sends Shift+Insert through Hyprland with explicit mods
-  // (like paste-pinned.sh), so a still-held Alt no longer turns it into
-  // Alt+Shift+Insert, which pasted nothing (the 1.26/1.27 bug: the paste
-  // waited for an Alt release the popup often never saw, then fired after
-  // 1 s with Alt still down, through wtype, which merges held modifiers).
+  // Alt+Shift+1…9, 0 (1.29.0): slot N = pins first, then the newest
+  // history items (ClipboardHistory.slotHistoryIndex, the same mapping as
+  // the global bind's paste-slot.sh), whatever the search shows. Pastes at
+  // once through clipboard.sh, which sends Shift+Insert via Hyprland with
+  // explicit mods, so the held Alt+Shift do not merge in (1.28.0 fix).
   function activateSlot(slot) {
-    var hi = ClipboardHistory.pinHistoryIndex(root.history, slot)
+    var hi = ClipboardHistory.slotHistoryIndex(root.history, slot)
     if (hi < 0) return
     if (ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.close(); return }
     root.dropQueue()
     root.opened = false
     Quickshell.execDetached([root.helper, "paste", String(hi)])
-  }
-
-  function firePendingPaste() {
-    var index = root.pendingPasteIndex
-    root.pendingPasteIndex = -1
-    pasteTimer.stop()
-    if (index >= 0) root.activateIndex(index)
-  }
-
-  function handleSearchKeyRelease(event) {
-    if (root.pendingPasteIndex >= 0 && ClipboardHistory.isModifierKey(event.key)) {
-      root.firePendingPaste()
-      event.accepted = true
-    }
   }
 
   function setFilter(nextFilter) {
@@ -1117,10 +1118,9 @@ Item {
     root.close()
     // 1.25.0: show what was recognised, so a bad scan is caught before
     // pasting: one line, whitespace collapsed, cut with "…", markup escaped.
-    // 1.28.0: the Omarchy toast shows 2 body lines and cuts the rest with
-    // its own "…", which hid the closing quote. The preview is now short
-    // enough for 2 lines with the quote, and the Super+V hint is in the title.
-    root.notify("󰆏", r.ocrTip.replace(/^Copy/, "Copied") + " · Super+V pastes", ClipboardHistory.ocrPreview(r.ocrText), 6000)
+    // (1.28.0 tried a shorter preview with the hint in the title; 1.29.0 is
+    // back to the 1.25–1.27 toast: 120 characters, hint on its own line.)
+    root.notify("󰆏", r.ocrTip.replace(/^Copy/, "Copied"), ClipboardHistory.ocrPreview(r.ocrText) + "\nPaste it with Super+V.", 6000)
   }
   function openIndex(index) { root.runOnIndex(index, "open") }
   // Settings: copy one language's pacman command (the user runs it).
@@ -1161,7 +1161,6 @@ Item {
       event.accepted = true
       return
     }
-    if (root.infoOpen) { root.handleInfoKey(event); return }
 
     var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
     var alt = (event.modifiers & Qt.AltModifier) !== 0
@@ -1182,12 +1181,12 @@ Item {
       }
       if (step.consumed) { event.accepted = true; return }
     }
+    var slot = ClipboardHistory.slotFromKey(event.nativeScanCode, event.key)
     var action = ClipboardHistory.searchKeyAction({
-      key: event.key, ctrl: ctrl, alt: alt, shift: shift,
+      key: event.key, ctrl: ctrl, alt: alt, shift: shift, slot: slot,
       hasSelection: searchInput.selectedText.length > 0,
       queued: root.queueKeys.length
     })
-    var digit = event.key >= Qt.Key_1 && event.key <= Qt.Key_9 ? event.key - Qt.Key_0 : 0
     // Any key other than Del cancels an armed pinned delete.
     if (action !== "delete" && !ClipboardHistory.isModifierKey(event.key)) root.disarmDelete()
 
@@ -1199,7 +1198,8 @@ Item {
       else if (esc === "collapse") root.searchExpanded = false
       else root.close()
       break
-    case "slot": root.activateSlot(digit); break
+    case "slot": root.activateSlot(slot); break
+    case "ignore": break
     case "queueToggle": if (root.cursorActive) root.toggleQueueIndex(root.selectedIndex); break
     case "queueStart": root.startQueue(); break
     case "queueClear": root.queueKeys = []; break
@@ -1277,7 +1277,6 @@ Item {
       }
     }
   }
-  onInfoOpenChanged: if (root.infoOpen && !ocrLangProc.running) ocrLangProc.running = true
   Timer {
     id: ocrWatchTimer
     interval: 3000
@@ -1331,6 +1330,7 @@ Item {
         if (r.ok && root.feedbackPendingInput) root.feedbackPendingInput.text = ""
         root.feedbackPendingInput = null
         root.feedbackNote = r.note
+        root.feedbackSent = r.ok
       }
     }
   }
@@ -1375,7 +1375,7 @@ Item {
     Bridge.setOverlay(root)
     initProc.running = true
   }
-  Component.onDestruction: Bridge.clearOverlay(root)
+  Component.onDestruction: { Bridge.clearOverlay(root); root.removeGlobalKeysIfGone() }
 
   ListModel { id: displayModel }
 
@@ -1411,11 +1411,6 @@ Item {
     onFileChanged: reload()
   }
 
-  Timer {
-    id: pasteTimer
-    interval: 1000
-    onTriggered: root.firePendingPaste()
-  }
 
   Timer {
     id: armTimer
@@ -1587,31 +1582,15 @@ Item {
             anchors.rightMargin: Style.space(12)
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: root.infoOpen ? "Settings" : "Clipboard Manager"
+            text: "Clipboard Manager"
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.title
             font.bold: true
             elide: Text.ElideRight
           }
-          // 1.28.0: plugin version next to "Settings".
-          Text {
-            id: headerVersion
-            objectName: "headerVersion"
-            visible: headerTitle.visible && root.infoOpen
-            x: headerTitle.x + headerTitle.contentWidth + Style.space(8)
-            anchors.baseline: headerTitle.baseline
-            textFormat: Text.PlainText
-            text: root.pluginVersion
-            color: root.dimText
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-          }
-
           // Square, styled exactly like the expanded search field (same
-          // fill, border and radius as searchBox), icon centred. On the
-          // settings page (1.25.0) it is the back arrow instead (same as Esc
-          // or the gear), since searching does nothing there.
+          // fill, border and radius as searchBox), icon centred.
           BorderSurface {
             id: searchButton
             objectName: "searchButton"
@@ -1631,7 +1610,7 @@ Item {
             Text {
               anchors.centerIn: parent
               textFormat: Text.PlainText
-              text: root.infoOpen ? "󰁍" : "󰍉"
+              text: "󰍉"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.icon
@@ -1643,15 +1622,9 @@ Item {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: {
-                if (root.infoOpen) { root.closeInfo(); return }
                 root.searchExpanded = true
                 searchInput.forceActiveFocus()
               }
-            }
-
-            PanelToolTip {
-              visible: searchButtonMouse.containsMouse && root.infoOpen
-              text: "Back to the list (Esc)"
             }
           }
 
@@ -1696,7 +1669,6 @@ Item {
             font.pixelSize: Style.font.body
             Keys.priority: Keys.BeforeItem
             Keys.onPressed: function(event) { root.handleSearchKey(event) }
-            Keys.onReleased: function(event) { root.handleSearchKeyRelease(event) }
             onTextChanged: if (text !== root.filterText) root.setFilter(text)
 
             Text {
@@ -1753,90 +1725,16 @@ Item {
           width: parent.width
           height: parent.height - root.headerHeight - footer.implicitHeight - root.contentSpacing * 2
 
-          // Shortcuts & settings view, shown over the list.
-          Rectangle {
-            id: infoView
-            anchors.fill: parent
-            visible: root.infoOpen
-            z: 5
-            color: root.background
-
-            Flickable {
-              id: infoFlick
-              objectName: "infoFlick"
-              anchors.fill: parent
-              clip: true
-              contentWidth: width
-              contentHeight: infoColumn.implicitHeight
-              boundsBehavior: Flickable.StopAtBounds
-              flickDeceleration: 2500
-              maximumFlickVelocity: 6000
-
-              KineticScroll {
-                flickable: infoFlick
-                wheelStep: root.rowHeight * 3
-              }
-
-              Column {
-                id: infoColumn
-                objectName: "infoColumn"
-                width: infoFlick.width
-                spacing: Style.space(2)
-
-                Loader {
-                  width: parent.width
-                  sourceComponent: secGeneral
-                  onLoaded: item.firstInColumn = true
-                }
-                Loader {
-                  width: parent.width
-                  sourceComponent: secHistory
-                }
-                Loader {
-                  id: fluxSection
-                  width: parent.width
-                  sourceComponent: secFlux
-                }
-                Loader {
-                  width: parent.width
-                  sourceComponent: secOcr
-                }
-                Loader {
-                  width: parent.width
-                  sourceComponent: secFilters
-                }
-                Loader {
-                  width: parent.width
-                  sourceComponent: secShortcuts
-                }
-                Loader {
-                  width: parent.width
-                  sourceComponent: secFeedback
-                }
-                Item { width: 1; height: Style.space(6) }
-              }
-            }
-          }
-
-          // 1.26.0: each settings section is a Component, so the same sections
-          // fill the popup page (one column) and the settings window (two).
-          // firstInColumn drops the divider above the first one in a column.
+          // Settings sections (Components), one per page of the settings window.
           Component {
             id: secGeneral
             Column {
               id: sec
-              property bool firstInColumn: false
-              property bool inWindow: false
               width: parent ? parent.width : 0
               spacing: Style.space(2)
 
                 // 1.25.0: sections like the stock Display panel (PanelSeparator +
                 // PanelSectionHeader between them), most-used settings first.
-                SettingsHeading {
-                  title: "GENERAL"
-                  first: sec.firstInColumn
-                  hidden: sec.inWindow
-                }
                 Repeater {
                   model: [
                     { key: "incognito", label: "󰗹  Incognito", value: root.privateMode ? "on" : "off", hint: "Ctrl+I" }
@@ -1878,8 +1776,7 @@ Item {
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
                       active: root.clickAction === modelData.key
-                      hasCursor: root.infoOpen && root.infoActions[root.infoIndex] === "click" && root.clickAction === modelData.key
-                      onClicked: { root.infoIndex = root.infoActions.indexOf("click"); root.setClickAction(modelData.key) }
+                      onClicked: root.setClickAction(modelData.key)
                     }
                   }
                 }
@@ -1890,17 +1787,9 @@ Item {
             id: secHistory
             Column {
               id: sec
-              property bool firstInColumn: false
-              property bool inWindow: false
               width: parent ? parent.width : 0
               spacing: Style.space(2)
 
-                SettingsHeading {
-                  title: "HISTORY"
-
-                  first: sec.firstInColumn
-                  hidden: sec.inWindow
-                }
                 Repeater {
                   model: [
                     { icon: "󰋚", label: "Delete items after", value: "pinned items kept" }
@@ -1934,8 +1823,7 @@ Item {
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
                       active: root.keepDays === modelData
-                      hasCursor: root.infoOpen && root.infoActions[root.infoIndex] === "keep" && root.keepDays === modelData
-                      onClicked: { root.infoIndex = root.infoActions.indexOf("keep"); root.setKeepDays(modelData) }
+                      onClicked: root.setKeepDays(modelData)
                     }
                   }
                 }
@@ -1953,17 +1841,10 @@ Item {
             id: secFlux
             Column {
               id: sec
-              property bool firstInColumn: false
-              property bool inWindow: false
               width: parent ? parent.width : 0
               spacing: Style.space(2)
 
                 // Flux section (the footer phone button opens the view here).
-                SettingsHeading {
-                  title: "FLUX (PHONE)"
-                  first: sec.firstInColumn
-                  hidden: sec.inWindow
-                }
                 Repeater {
                   model: [
                     { icon: "󰄜", label: root.phoneOnline ? (root.phoneName || "Phone") : "No phone connected", value: root.fluxStatusText },
@@ -1975,11 +1856,10 @@ Item {
                 Rectangle {
                   id: sendRow
                   readonly property bool enabled: root.phoneOnline && !root.fluxPaused
-                  readonly property bool current: root.infoOpen && root.infoIndex === root.infoActions.indexOf("send")
                   width: parent.width
                   height: root.rowHeight
                   radius: root.cornerRadius
-                  color: current ? Style.hoverFillFor(root.foreground, root.accent) : (sendMouse.containsMouse && enabled ? Util.alpha(root.foreground, 0.08) : "transparent")
+                  color: sendMouse.containsMouse && enabled ? Util.alpha(root.foreground, 0.08) : "transparent"
                   opacity: enabled ? 1 : 0.5
 
                   Text {
@@ -2009,7 +1889,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: sendRow.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: { root.infoIndex = root.infoActions.indexOf("send"); root.sendCurrentClipboard() }
+                    onClicked: root.sendCurrentClipboard()
                   }
                 }
             }
@@ -2019,8 +1899,6 @@ Item {
             id: secOcr
             Column {
               id: sec
-              property bool firstInColumn: false
-              property bool inWindow: false
               width: parent ? parent.width : 0
               spacing: Style.space(2)
 
@@ -2028,12 +1906,6 @@ Item {
                 // nothing is downloaded; OMARCHY_OCR_LANGS picks them, like
                 // Omarchy's own text capture (Super+Ctrl+Print). Popular
                 // packs are listed; a click copies its pacman command.
-                SettingsHeading {
-                  objectName: "clipOcrHeading"
-                  title: "TEXT RECOGNITION (OCR)"
-                  first: sec.firstInColumn
-                  hidden: sec.inWindow
-                }
                 Repeater {
                   model: [
                     { icon: "󰗊", label: "Installed languages", value: root.ocrInfo.installed.length ? root.ocrInfo.installed.join(", ") : "none (tesseract missing)" },
@@ -2161,19 +2033,11 @@ Item {
             id: secFilters
             Column {
               id: sec
-              property bool firstInColumn: false
-              property bool inWindow: false
               width: parent ? parent.width : 0
               spacing: Style.space(2)
 
                 // Search filters: one row per filter, the example to type on
                 // the right; combine them with text, e.g. "type:link github".
-                SettingsHeading {
-                  objectName: "clipFilterHeading"
-                  title: "SEARCH FILTERS"
-                  first: sec.firstInColumn
-                  hidden: sec.inWindow
-                }
                 Repeater {
                   id: filterRows
                   model: ClipboardHistory.SEARCH_FILTER_EXAMPLES.map(function(f) { return { icon: "󰍉", label: f.label, value: f.value } })
@@ -2186,21 +2050,32 @@ Item {
             id: secShortcuts
             Column {
               id: sec
-              property bool firstInColumn: false
-              property bool inWindow: false
               width: parent ? parent.width : 0
               spacing: Style.space(2)
 
-                SettingsHeading {
-                  title: "SHORTCUTS"
-
-                  first: sec.firstInColumn
-                  hidden: sec.inWindow
+                Repeater {
+                  model: [
+                    { key: "globalKeys", label: "󰌌  Global shortcuts (Alt+V, Alt+Shift+1…9, 0): " + (root.globalKeys ? "on" : "off"), value: "", hint: "" }
+                  ]
+                  delegate: infoActionRow
+                }
+                Text {
+                  objectName: "globalKeysStatus"
+                  x: Style.space(10)
+                  bottomPadding: Style.space(8)
+                  width: parent.width - Style.space(20)
+                  visible: text !== ""
+                  wrapMode: Text.Wrap
+                  textFormat: Text.PlainText
+                  text: root.globalKeys ? (root.globalKeysInfo.text || "Checking…") : "Off: Nice Clipboard adds no keys. Keys from your own Hyprland config still work."
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
                 }
                 Repeater {
                   model: [
                     { icon: "󰅍", label: "Open clipboard", value: "Alt+V · Super+Ctrl+V" },
-                    { icon: "󰐃", label: "Paste pinned item N (popup; anywhere: Alt+Shift)", value: "Alt+1…9" },
+                    { icon: "󰐃", label: "Paste slot N: pinned items, then the newest history items", value: "Alt+Shift+1…9, 0" },
                     { icon: "󰒆", label: "Paste queue: pick rows, then paste in order", value: "Ctrl+click · Ctrl+Enter" }
                   ]
                   delegate: infoValueRow
@@ -2212,17 +2087,9 @@ Item {
             id: secFeedback
             Column {
               id: sec
-              property bool firstInColumn: false
-              property bool inWindow: false
               width: parent ? parent.width : 0
               spacing: Style.space(2)
 
-                SettingsHeading {
-                  title: "FEEDBACK"
-
-                  first: sec.firstInColumn
-                  hidden: sec.inWindow
-                }
                 // Same box style as the search field.
                 BorderSurface {
                   id: feedbackBox
@@ -2246,11 +2113,11 @@ Item {
                     selectedTextColor: root.selectedText
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.body
-                    onTextChanged: if (text !== "") root.feedbackNote = ""
+                    onTextChanged: if (text !== "") { root.feedbackNote = ""; root.feedbackSent = false }
                     // Ctrl+Enter sends, Esc leaves the field; other keys type.
                     Keys.onPressed: function(event) {
                       if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { root.sendFeedback(feedbackInput, (event.modifiers & Qt.ShiftModifier) !== 0); event.accepted = true }
-                      else if (event.key === Qt.Key_Escape) { if (sec.inWindow) settingsKeys.forceActiveFocus(); else searchInput.forceActiveFocus(); event.accepted = true }
+                      else if (event.key === Qt.Key_Escape) { if (root.settingsKeysRef) root.settingsKeysRef.forceActiveFocus(); event.accepted = true }
                     }
 
                     Text {
@@ -2281,18 +2148,30 @@ Item {
                     font.pixelSize: Style.font.body
                   }
                   Text {
+                    objectName: "feedbackSentIcon"
+                    visible: root.feedbackSent
+                    anchors.right: feedbackNoteText.left
+                    anchors.rightMargin: Style.space(6)
+                    anchors.verticalCenter: parent.verticalCenter
+                    textFormat: Text.PlainText
+                    text: "󰗠"
+                    color: root.successColor
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.icon
+                  }
+                  Text {
+                    id: feedbackNoteText
                     objectName: "feedbackNote"
                     anchors.right: parent.right
                     anchors.rightMargin: Style.space(10)
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.space(150)
                     anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width - Style.space(190))
                     horizontalAlignment: Text.AlignRight
                     elide: Text.ElideLeft
                     text: root.feedbackNote !== "" ? root.feedbackNote : (root.feedbackEndpoint !== "" ? "Ctrl+Enter sends · Ctrl+Shift+Enter: GitHub" : "Ctrl+Enter · opens a GitHub issue")
-                    color: root.dimText
+                    color: root.feedbackSent ? root.foreground : root.dimText
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+                    font.pixelSize: root.feedbackSent ? Style.font.body : Style.font.caption
                   }
                   MouseArea {
                     id: feedbackSendMouse
@@ -2315,8 +2194,7 @@ Item {
               width: parent ? parent.width : 0
               height: root.rowHeight
               radius: root.cornerRadius
-              readonly property bool current: root.infoOpen && root.infoIndex === root.infoActions.indexOf(modelData.key)
-              color: current ? Style.hoverFillFor(root.foreground, root.accent) : (infoRowMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent")
+              color: infoRowMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent"
 
               Text {
                 anchors.left: parent.left
@@ -2369,7 +2247,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { root.infoIndex = root.infoActions.indexOf(parent.modelData.key); root.runInfoAction(parent.modelData.key) }
+                onClicked: root.runSettingsAction(parent.modelData.key)
               }
             }
           }
@@ -2411,7 +2289,6 @@ Item {
 
           Item {
             anchors.fill: parent
-            visible: !root.infoOpen
 
             Item {
               width: parent.width
@@ -2806,7 +2683,7 @@ Item {
                       }
 
                       Item {
-                        readonly property string hint: row.pinned ? ClipboardHistory.pinHint(root.history, row.historyIndex) : ""
+                        readonly property string hint: ClipboardHistory.slotHint(root.history, row.historyIndex)
                         visible: !row.showActions && !row.armed && row.queueNo === 0 && hint !== ""
                         width: visible ? slotHint.implicitWidth + Style.space(6) : 0
                         height: actions.height
@@ -2902,7 +2779,7 @@ Item {
             // column had width 0 and "No matches" never showed.
             width: parent.width - Style.space(24)
             spacing: Style.space(8)
-            visible: displayModel.count === 0 && !root.infoOpen
+            visible: displayModel.count === 0
 
             Text {
               text: root.privateMode && root.history.length === 0 ? "󰗹" : "󰅌"
@@ -3001,7 +2878,7 @@ Item {
                   // incognito/phone/gear buttons with room to spare, else
                   // "Clear history (162)"; see ClipboardHistory.clearLabel.
                   text: ClipboardHistory.clearLabel(root.unpinnedCount, clearLongMetrics.advanceWidth,
-                    Math.max(0, (phoneButton.visible ? phoneButton.x : windowSettingsButton.x) - incognitoSwitch.width - Style.space(8) - Style.space(16)),
+                    Math.max(0, (phoneButton.visible ? phoneButton.x : gearButton.x) - incognitoSwitch.width - Style.space(8) - Style.space(16)),
                     Style.space(24))
                   color: root.foreground
                   font.family: root.fontFamily
@@ -3026,7 +2903,7 @@ Item {
               // Incognito on/off switch (also Ctrl+I, or right-click the bar icon).
               Rectangle {
                 id: incognitoSwitch
-                anchors.right: phoneButton.visible ? phoneButton.left : windowSettingsButton.left
+                anchors.right: phoneButton.visible ? phoneButton.left : gearButton.left
                 anchors.rightMargin: Style.space(8)
                 width: incognitoRow.implicitWidth + Style.space(16)
                 height: root.footerRowHeight
@@ -3082,7 +2959,7 @@ Item {
             Rectangle {
               id: phoneButton
               visible: root.phoneIcon !== ""
-              anchors.right: windowSettingsButton.left
+              anchors.right: gearButton.left
               anchors.rightMargin: Style.space(8)
               anchors.top: parent.top
               width: root.footerRowHeight
@@ -3117,43 +2994,7 @@ Item {
               }
             }
 
-            // 1.26.0 try-out: settings in their own tiling window (like Flux),
-            // next to the gear (settings inside this popup), to compare both.
-            Rectangle {
-              id: windowSettingsButton
-              objectName: "windowSettingsButton"
-              anchors.right: gearButton.left
-              anchors.rightMargin: Style.space(8)
-              anchors.top: parent.top
-              width: root.footerRowHeight
-              height: root.footerRowHeight
-              radius: root.cornerRadius
-              color: windowSettingsMouse.containsMouse ? Util.alpha(root.foreground, 0.10) : Util.alpha(root.foreground, 0.04)
-
-              Text {
-                anchors.centerIn: parent
-                textFormat: Text.PlainText
-                text: "󰏌"
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.icon
-              }
-
-              MouseArea {
-                id: windowSettingsMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.openSettingsWindow()
-              }
-
-              PanelToolTip {
-                visible: windowSettingsMouse.containsMouse
-                text: "Settings in a window"
-              }
-            }
-
-            // Settings view.
+            // Settings (opens the settings window).
             Rectangle {
               id: gearButton
               anchors.right: parent.right
@@ -3161,14 +3002,13 @@ Item {
               width: root.footerRowHeight
               height: root.footerRowHeight
               radius: root.cornerRadius
-              color: root.infoOpen ? Util.alpha(root.accent, 0.20)
-                : (gearMouse.containsMouse ? Util.alpha(root.foreground, 0.10) : Util.alpha(root.foreground, 0.04))
+              color: gearMouse.containsMouse ? Util.alpha(root.foreground, 0.10) : Util.alpha(root.foreground, 0.04)
 
               Text {
                 anchors.centerIn: parent
                 textFormat: Text.PlainText
                 text: "󰒓"
-                color: root.infoOpen ? root.accent : root.foreground
+                color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.icon
               }
@@ -3178,12 +3018,12 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.infoOpen ? root.closeInfo() : root.openInfo()
+                onClicked: root.openSettingsWindow()
               }
 
               PanelToolTip {
                 visible: gearMouse.containsMouse
-                text: "Settings in this popup"
+                text: "Settings"
               }
             }
           }
@@ -3199,7 +3039,9 @@ Item {
   // the same Components the popup page uses (their own small headings are
   // hidden here). ↑ ↓ / Tab pick a section, PgUp/PgDn scroll, Esc closes.
   // Tiles like Flux's window (xdg toplevel, class org.quickshell).
-  readonly property var settingsWindowRef: settingsWindow
+  readonly property var settingsWindowRef: settingsWindowLoader.item
+  property var settingsKeysRef: null
+  property var settingsPaneFlickRef: null
   property int settingsSection: 0
   readonly property var settingsSections: [
     { key: "general", icon: "󰒓", label: "General", desc: "Incognito and what a click on an item does.", comp: secGeneral },
@@ -3213,13 +3055,20 @@ Item {
   function showSettingsSection(i) {
     var n = root.settingsSections.length
     root.settingsSection = ((i % n) + n) % n
-    settingsPaneFlick.contentY = 0
+    if (root.settingsPaneFlickRef) root.settingsPaneFlickRef.contentY = 0
   }
+  LazyLoader {
+    id: settingsWindowLoader
+    active: false
   FloatingWindow {
     id: settingsWindow
     objectName: "settingsWindow"
-    visible: false
+    visible: true
     title: "Nice Clipboard settings"
+    // Super+W (killactive) / the compositor closing it: drop it, so the
+    // next open makes a new one. Esc does the same.
+    onClosed: Qt.callLater(root.closeSettingsWindow)
+    onVisibleChanged: if (!visible) Qt.callLater(root.closeSettingsWindow)
     implicitWidth: 900
     implicitHeight: 650
     color: root.background
@@ -3229,9 +3078,10 @@ Item {
       objectName: "settingsWindowContent"
       anchors.fill: parent
       focus: true
+      Component.onCompleted: { root.settingsKeysRef = settingsKeys; root.settingsPaneFlickRef = settingsPaneFlick }
       Keys.onPressed: function(event) {
         var k = event.key
-        if (k === Qt.Key_Escape) settingsWindow.visible = false
+        if (k === Qt.Key_Escape) Qt.callLater(root.closeSettingsWindow)
         else if (k === Qt.Key_Down || k === Qt.Key_Tab) root.showSettingsSection(root.settingsSection + 1)
         else if (k === Qt.Key_Up || k === Qt.Key_Backtab) root.showSettingsSection(root.settingsSection - 1)
         else if (k === Qt.Key_PageDown) settingsPaneFlick.contentY = Math.min(Math.max(0, settingsPaneFlick.contentHeight - settingsPaneFlick.height), settingsPaneFlick.contentY + settingsPaneFlick.height * 0.85)
@@ -3427,10 +3277,10 @@ Item {
             objectName: "settingsPaneLoader"
             width: settingsPaneFlick.width
             sourceComponent: settingsPane.section.comp
-            onLoaded: { item.firstInColumn = true; item.inWindow = true }
           }
         }
       }
     }
+  }
   }
 }

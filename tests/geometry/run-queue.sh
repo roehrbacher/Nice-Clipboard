@@ -8,6 +8,9 @@ here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 ln -s /usr/share/omarchy/shell/Commons "$tmp/Commons"; ln -s /usr/share/omarchy/shell/Ui "$tmp/Ui"
 mkdir "$tmp/clip" "$tmp/data"; cp "$src"/*.qml "$src"/*.js "$src"/*.sh "$tmp/clip/"; cp "$here/PanelStub.qml" "$tmp/clip/"
+# Never touch the live Hyprland binds: global-keys.sh is a stub that logs.
+printf '#!/bin/bash\necho "$1" >> "%s/globalkeys"\n[[ $1 == apply ]] && printf "Alt+V\\ttaken\\tClipboard history\\nAlt+Shift+1\\ttaken\\tPaste pinned clipboard item 1\\nAlt+Shift+0\\tbound\\t\\n"\nexit 0\n' "$tmp" > "$tmp/clip/global-keys.sh"; chmod +x "$tmp/clip/global-keys.sh"
+export NICE_CLIPBOARD_NO_GLOBAL_KEYS=1
 printf '#!/bin/bash\n[[ $1 == start ]] && cat > "%s/got"\nexit 0\n' "$tmp" > "$tmp/clip/queue.sh"
 printf '#!/bin/bash\nexit 0\n' > "$tmp/clip/clipboard.sh"; chmod +x "$tmp/clip/"*.sh
 printf 'KineticScroll 1.0 KineticScroll.qml\nMarqueeLabel 1.0 MarqueeLabel.qml\nPanelStub 1.0 PanelStub.qml\n' > "$tmp/clip/qmldir"

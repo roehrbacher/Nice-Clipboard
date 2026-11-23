@@ -90,7 +90,8 @@ assert.strictEqual(act(K.PageDown), "pageDown")
 assert.strictEqual(act(K.Return), "enter")
 assert.strictEqual(act(K.Return, { shift: true }), "enter")
 assert.strictEqual(act(K.Escape), "escape")
-assert.strictEqual(act(0x33, { alt: true }), "slot", "Alt+3 = third row from the top")
+assert.strictEqual(act(0x33, { alt: true, slot: 3 }), "ignore", "plain Alt+3 does nothing since 1.29.0 (and types nothing)")
+assert.strictEqual(act(0x21, { alt: true, shift: true, slot: 1 }), "slot", "Alt+Shift+1 (German ! key) = slot 1")
 assert.strictEqual(act(0x33, { ctrl: true }), "", "Ctrl+3 is no longer a shortcut")
 assert.strictEqual(act(K.P, { ctrl: true }), "pin", "Ctrl+P pins")
 assert.strictEqual(act(K.F, { ctrl: true }), "pin", "Ctrl+F still pins")
@@ -106,10 +107,6 @@ assert.strictEqual(act(K.U, { ctrl: true }), "clearSearch", "Ctrl+U clears the s
 {
   const rows = H.displayRows([{ type: "text", text: "a", pinned: true }, { type: "text", text: "b" }, { type: "text", text: "c" }], "", 50)
   assert.deepStrictEqual(rows.map(r => r.slot), [1, 2, 3], "Alt+1..3 top to bottom, pinned first")
-  assert.strictEqual(H.slotRowIndex(rows, 1), 0, "Alt+1 = pinned row on top")
-  assert.strictEqual(H.slotRowIndex(rows, 2), 1, "Alt+2 = first history row")
-  assert.strictEqual(H.slotRowIndex(rows, 3), 2)
-  assert.strictEqual(H.slotRowIndex(rows, 4), -1, "no fourth row")
   for (const k of [K.Control, K.Alt, K.Shift, K.Meta]) assert.ok(H.isModifierKey(k), "modifier " + k)
   assert.ok(!H.isModifierKey(0x31), "digit is not a modifier")
   assert.strictEqual(act(K.S, { ctrl: true }), "send", "Ctrl+S sends to the phone")
@@ -587,16 +584,7 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
 }
 
 {
-  // 1.26.0: Alt+N = Nth history row (pins skipped); hints; clear counts unpinned only
-  const rows = [{ pinned: true }, { pinned: true }, { pinned: false }, { pinned: false }, { pinned: false }]
-  assert.strictEqual(H.historySlotRowIndex(rows, 1), 2, "Alt+1 = first history row, below the pins")
-  assert.strictEqual(H.historySlotRowIndex(rows, 3), 4, "Alt+3 = third history row")
-  assert.strictEqual(H.historySlotRowIndex(rows, 4), -1, "no fourth history row")
-  assert.strictEqual(H.historySlotRowIndex([{ pinned: false }], 1), 0, "no pins: Alt+1 = top row")
-  assert.strictEqual(H.slotHint(true, 2, 2), "Alt+Shift+2", "pinned rows show the global Alt+Shift+N")
-  assert.strictEqual(H.slotHint(false, 3, 2), "Alt+1", "first history row under 2 pins is Alt+1")
-  assert.strictEqual(H.slotHint(false, 12, 2), "", "history rows past 9 have no hint")
-  assert.strictEqual(H.slotHint(true, 10, 12), "", "pins past 9 have no hint")
+  // 1.26.0: clear counts unpinned only
   const hist = [
     { type: "text", text: "p1", pinned: true }, { type: "text", text: "p2", pinned: true },
     { type: "text", text: "p3", pinned: true }, { type: "text", text: "p4", pinned: true },
@@ -609,7 +597,7 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.strictEqual(H.unpinnedCount(H.clearHistory(hist)), 0, "nothing left to clear afterwards")
   assert.strictEqual(H.phoneGlyph("online").codePointAt(0), 0xF17FD, "connected: cellphone-check")
   assert.strictEqual(H.phoneGlyph("nophone").codePointAt(0), 0xF0950, "not connected: cellphone-off")
-  console.log("ok 1.26.0 Alt+N history slots, clear count, phone glyph")
+  console.log("ok 1.26.0 clear count, phone glyph")
 }
 
 {
@@ -647,7 +635,7 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
 {
   // 1.27.0: direct feedback payload and replies
   assert.deepStrictEqual(JSON.parse(H.feedbackPayload("  hi there \n", "1.27.0")), { message: "hi there", version: "1.27.0", website: "" })
-  assert.deepStrictEqual(H.feedbackResultFromCurl('{"ok":true}\n0'), { ok: true, note: "Sent, thanks!" })
+  assert.deepStrictEqual(H.feedbackResultFromCurl('{"ok":true}\n0'), { ok: true, note: "Feedback sent, thanks! Timon reads every message." })
   assert.strictEqual(H.feedbackResultFromCurl('{"ok":false,"error":"slow down"}\n0').note, "Too many: try again in a minute")
   assert.strictEqual(H.feedbackResultFromCurl('{"ok":false,"error":"too long"}\n0').ok, false)
   assert.strictEqual(H.feedbackResultFromCurl('\n6').note, "Not sent: offline? Text kept", "DNS failure")
@@ -658,11 +646,11 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
 }
 
 {
-  // 1.28.0: OCR preview fits Omarchy's 2-line toast and always ends with …”
+  // OCR preview: truncated ones end with …” (1.28.0); limit 120 again (1.29.0)
   const inv = "Invoice number 2026-11-0042 due on 30 November. Please transfer the amount to the account below and quote the number as reference."
   const p = H.ocrPreview(inv)
   assert.ok(p.startsWith("“") && p.endsWith("…”"), "truncated preview keeps the closing quote after the ellipsis: " + p)
-  assert.ok(Array.from(p).length <= 72 + 2, "default limit 72 (+ quotes)")
+  assert.ok(Array.from(H.ocrPreview(inv + " " + inv)).length === 120 + 2, "default limit 120 (+ quotes)")
   assert.ok(!/\s…/.test(p), "no space before the ellipsis")
   assert.strictEqual(H.ocrPreview("short text"), "“short text”", "short: quotes, no ellipsis")
   assert.ok(H.ocrPreview("a & b ".repeat(40)).endsWith("…”"), "escaping does not eat the quote")
@@ -672,26 +660,48 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.deepStrictEqual(names, names.slice().sort(), "alphabetical by shown name")
   assert.strictEqual(names[0], "Arabic"); assert.strictEqual(names[names.length - 1], "Ukrainian")
   assert.strictEqual(H.ocrLanguageRows(["eng"]).find(r => r.code === "eng").installed, true)
-  const argv = H.ocrInstallArgv("deu")
+  const script = "/home/u/.config/omarchy/plugins/timon.clipboard/ocr-install.sh"
+  const argv = H.ocrInstallArgv("deu", script, "German")
   assert.strictEqual(argv[0], "bash"); assert.strictEqual(argv[1], "-c")
-  assert.ok(argv[2].includes("omarchy-launch-floating-terminal-with-presentation 'omarchy-pkg-add tesseract-data-deu'"), "Omarchy floating terminal + pkg-add")
-  assert.ok(argv[2].includes("sudo pacman -S --needed tesseract-data-deu"), "fallback terminal runs pacman --needed")
-  assert.ok(H.ocrInstallArgv("chi_sim")[2].includes("tesseract-data-chi_sim"))
-  for (const bad of ["", "de", "deu; rm -rf ~", "deu'", "DEU", "../x", "deu fra"]) assert.deepStrictEqual(H.ocrInstallArgv(bad), [], "rejected: " + bad)
+  assert.ok(argv[2].includes("--app-id=org.omarchy.terminal") && argv[2].includes("uwsm-app"), "Omarchy floating terminal")
+  assert.ok(!argv[2].includes("deu") && !argv[2].includes("omarchy-pkg-add"), "code passed as argv, own script, no omarchy-pkg-add")
+  assert.deepStrictEqual(argv.slice(3), [script, "deu", "German"])
+  assert.deepStrictEqual(H.ocrInstallArgv("deu", ""), [], "needs the script path")
+  for (const bad of ["", "de", "deu; rm -rf ~", "deu'", "DEU", "../x", "deu fra"]) assert.deepStrictEqual(H.ocrInstallArgv(bad, script), [], "rejected: " + bad)
 
-  // 1.28.0: Alt+1..9 = pinned items in history order (same as copy-pinned)
+  // 1.29.0: Alt+Shift+1…9, 0 = 10 slots: pins first, then newest history
   const hist = [{ text: "h0" }, { text: "p1", pinned: true }, { text: "h2" }, { text: "p2", pinned: true }, { text: "p3", pinned: true }]
-  assert.strictEqual(H.pinHistoryIndex(hist, 1), 1)
-  assert.strictEqual(H.pinHistoryIndex(hist, 2), 3)
-  assert.strictEqual(H.pinHistoryIndex(hist, 3), 4)
-  assert.strictEqual(H.pinHistoryIndex(hist, 4), -1, "no 4th pin")
-  assert.strictEqual(H.pinHistoryIndex(hist, 0), -1)
-  assert.strictEqual(H.pinHistoryIndex(hist, 10), -1, "only 1..9")
-  assert.strictEqual(H.pinHint(hist, 3), "Alt+2", "pinned row shows Alt+N")
-  assert.strictEqual(H.pinHint(hist, 0), "", "history rows have no number")
-  const many = Array.from({ length: 11 }, (_, i) => ({ text: "p" + i, pinned: true }))
-  assert.strictEqual(H.pinHint(many, 8), "Alt+9"); assert.strictEqual(H.pinHint(many, 9), "", "pin 10+ has no key")
-  assert.strictEqual(H.searchKeyAction({ key: 0x31, alt: true, ctrl: false, shift: false }), "slot", "Alt+1")
-  assert.strictEqual(H.searchKeyAction({ key: 0x32, alt: true, ctrl: false, shift: true }), "slot", "Alt+Shift+2 too")
-  console.log("ok 1.28.0 OCR preview quote, sorted languages, install argv, Alt+N pins")
+  assert.deepStrictEqual([1, 2, 3, 4, 5, 6].map(n => H.slotHistoryIndex(hist, n)), [1, 3, 4, 0, 2, -1])
+  assert.strictEqual(H.slotHistoryIndex(hist, 0), -1); assert.strictEqual(H.slotHistoryIndex(hist, 11), -1)
+  assert.strictEqual(H.slotHint(hist, 3), "Alt+Shift+2", "pinned row")
+  assert.strictEqual(H.slotHint(hist, 0), "Alt+Shift+4", "newest history row after 3 pins")
+  const nine = Array.from({ length: 9 }, (_, i) => ({ text: "p" + i, pinned: true })).concat([{ text: "new" }, { text: "old" }])
+  assert.strictEqual(H.slotHistoryIndex(nine, 10), 9, "9 pins: Alt+Shift+0 = newest history item")
+  assert.strictEqual(H.slotHint(nine, 9), "Alt+Shift+0"); assert.strictEqual(H.slotHint(nine, 10), "", "11th row has no slot")
+  const four = Array.from({ length: 4 }, (_, i) => ({ text: "p" + i, pinned: true })).concat(Array.from({ length: 8 }, (_, i) => ({ text: "h" + i })))
+  assert.deepStrictEqual([5, 6, 7, 8, 9, 10].map(n => H.slotHistoryIndex(four, n)), [4, 5, 6, 7, 8, 9], "4 pins: Alt+Shift+5…9, 0 = history 1…6")
+  const twelve = Array.from({ length: 12 }, (_, i) => ({ text: "p" + i, pinned: true }))
+  assert.strictEqual(H.slotHint(twelve, 9), "Alt+Shift+0"); assert.strictEqual(H.slotHint(twelve, 10), "", "pins past 10 have no key")
+  assert.strictEqual(H.slotFromKey(10, 0x21), 1, "keycode 10 = the 1 key, whatever Shift makes of it")
+  assert.strictEqual(H.slotFromKey(19, 0x3d), 10, "keycode 19 = the 0 key = slot 10")
+  assert.strictEqual(H.slotFromKey(0, 0x35), 5); assert.strictEqual(H.slotFromKey(0, 0x30), 10); assert.strictEqual(H.slotFromKey(38, 0x61), 0)
+  assert.strictEqual(H.searchKeyAction({ key: 0x22, slot: 2, alt: true, ctrl: false, shift: true }), "slot", "Alt+Shift+2")
+  assert.strictEqual(H.searchKeyAction({ key: 0x32, slot: 2, alt: true, ctrl: false, shift: false }), "ignore", "plain Alt+2 does nothing")
+  assert.strictEqual(H.searchKeyAction({ key: 0x22, slot: 2, alt: true, ctrl: true, shift: true }), "", "not with Ctrl")
+  assert.strictEqual(H.pinHistoryIndex, undefined, "1.28 pin-only mapping removed")
+
+  // 1.29.0: global shortcuts summary (global-keys.sh output)
+  const gk = H.globalKeysSummary("Alt+V\ttaken\tClipboard history\n" + [1,2,3,4,5,6,7,8,9].map(n => "Alt+Shift+" + n + "\ttaken\tPaste pinned clipboard item " + n).join("\n") + "\nAlt+Shift+0\tbound\t\n")
+  assert.strictEqual(gk.text, "Active: Alt+Shift+0. Already bound in your Hyprland config, left alone: Alt+V, Alt+Shift+1…9")
+  assert.strictEqual(H.globalKeysSummary("Alt+V\tours\t\nAlt+Shift+1\tbound\t\nAlt+Shift+2\tbound\t").text, "Active: Alt+V, Alt+Shift+1, 2")
+  assert.deepStrictEqual(H.globalKeysSummary("all\terror\tHyprland did not answer").errors, ["Hyprland did not answer"])
+  assert.strictEqual(H.keyLabels(["Alt+Shift+9", "Alt+Shift+0", "Alt+Shift+1"]), "Alt+Shift+1, 9, 0")
+
+  // 1.29.0: feedback sent wording, dev demo banner
+  assert.strictEqual(H.feedbackResult(0, '{"ok":true}').note, "Feedback sent, thanks! Timon reads every message.")
+  const demo = H.ocrDemoSuggestion(["eng", "deu", "spa"], "any")
+  assert.strictEqual(demo.code, "fra", "first not installed language"); assert.ok(demo.text.includes("demo"))
+  assert.strictEqual(H.ocrDemoSuggestion(["eng"], "ita").code, "ita")
+  assert.strictEqual(H.ocrDemoSuggestion(["eng", "ita"], "ita").code, "deu", "installed one is skipped")
+  console.log("ok 1.28.0/1.29.0 OCR preview, sorted languages, install argv, Alt+Shift slots, feedback, demo banner")
 }

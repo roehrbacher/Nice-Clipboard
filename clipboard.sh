@@ -5,14 +5,15 @@
 #   clipboard.sh init                     create the data dir (user-only), import stock history once
 #   clipboard.sh paste <index>            copy entry <index> and paste it (Shift+Insert)
 #   clipboard.sh copy <index>             copy entry <index> only
-#   clipboard.sh copy-pinned <n>          copy the n-th pinned entry (1-based, popup order);
-#                                         used by paste-pinned.sh (global Alt+Shift+N)
+#   clipboard.sh copy-slot <1-10>         copy slot n: pinned entries first, then the newest
+#                                         history ones (global Alt+Shift+1…9, 0; paste-slot.sh)
 #   clipboard.sh paste-md <index>         paste the HTML of entry <index> as Markdown (1.17.0):
 #                                         pandoc if installed, else html2md.py; plain text if both fail
 #   clipboard.sh markdown <index>         print that Markdown (tests)
 #   clipboard.sh current                  print a key of what is on the clipboard (text:<md5> or
 #                                         image:<sha256>), for the "on the clipboard" mark (1.19.0)
-#   clipboard.sh send <index>             copy text entry <index> and send it to the phone (flux-cli clip)
+#   clipboard.sh send <index>             send text entry <index> to the phone through fluxd's socket
+#                                         (the local clipboard is not touched)
 #   clipboard.sh open <index>             open a URL in the browser, text in the editor, an image in the editor
 #   clipboard.sh clear                    empty the live clipboard
 #   clipboard.sh prune                    delete stored images no entry points to
@@ -47,7 +48,7 @@ copy_entry() {
   esac
 }
 
-# 1.28.0: Shift+Insert through Hyprland with explicit mods (as paste-pinned.sh
+# 1.28.0: Shift+Insert through Hyprland with explicit mods (as paste-slot.sh
 # does), so keys still held from the shortcut (Alt of Alt+1) do not merge in:
 # wtype's virtual keyboard shares the modifier state, and Alt+Shift+Insert
 # pastes nothing. wtype stays the fallback when hyprctl is missing or fails.
@@ -131,20 +132,47 @@ markdown | paste-md)
   fi
   rm -f "$DATA_DIR/skip-next"
   ;;
-copy-pinned)
-  [[ ${2:-} =~ ^[1-9]$ && -r $HISTORY ]] || exit 1
-  i=$(jq -r --argjson n "$2" '[to_entries[] | select(.value.pinned == true) | .key][$n - 1] // empty' "$HISTORY") || exit 1
+copy-slot)
+  # 1.29.0: slot 1…10 (key 0 = 10): pinned entries first (history order),
+  # then the newest unpinned ones. Same as ClipboardHistory.slotHistoryIndex.
+  [[ ${2:-} =~ ^([1-9]|10)$ && -r $HISTORY ]] || exit 1
+  i=$(jq -r --argjson n "$2" '([to_entries[] | select(.value.pinned == true) | .key] + [to_entries[] | select(.value.pinned != true) | .key])[$n - 1] // empty' "$HISTORY") || exit 1
   [[ -n $i ]] || exit 1
   copy_entry "$i" || exit 1
   ;;
 send)
+  # 1.29.0: straight to fluxd's socket (the same "clipboard.send" call the
+  # Flux window uses), so the computer's clipboard and the history order are
+  # left alone (before, the entry was copied first and flux-cli sent the
+  # clipboard). The text goes over the socket, never through argv.
   valid_index "${2:-}" || exit 1
   [[ $(field "$2" type) == text ]] || exit 1
-  command -v flux-cli >/dev/null || exit 1
-  copy_entry "$2" || exit 1
-  sleep 0.15
-  # No TEXT argument: flux-cli reads the clipboard, so the text never shows up in argv.
-  flux-cli clip >/dev/null 2>&1 || exit 1
+  sock=${FLUX_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/flux/fluxd.sock}
+  [[ -S $sock ]] || exit 1
+  dev=$(timeout 5 flux-cli status --json 2>/dev/null | jq -r '[.devices[]? | select(.paired == true and .online == true)][0].id // empty') || exit 1
+  [[ -n $dev ]] || exit 1
+  jq -c --argjson i "$2" --arg d "$dev" '{id: 1, method: "clipboard.send", params: {device: $d, text: .[$i].text}}' "$HISTORY" |
+    timeout 10 python3 -c '
+import json, socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(8)
+s.connect(sys.argv[1])
+s.sendall(sys.stdin.buffer.read().rstrip(b"\n") + b"\n")
+buf = b""
+while True:
+    chunk = s.recv(65536)
+    if not chunk:
+        sys.exit(1)
+    buf += chunk
+    while b"\n" in buf:
+        line, buf = buf.split(b"\n", 1)
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(msg, dict) and msg.get("id") == 1:
+            sys.exit(1 if msg.get("error") else 0)
+' "$sock" || exit 1
   ;;
 open)
   valid_index "${2:-}" || exit 1
