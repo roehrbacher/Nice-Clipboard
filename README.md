@@ -49,7 +49,8 @@ imported once on first start. To hear about upstream changes, run
   layout) it opens at the top-left corner. A compact list, no preview pane;
   hover or select a row for its actions: phone (send), trash, pin.
 - **Size:** the popup scales with the screen: full size from 1080 px logical
-  height up, down to 85% on small laptop screens.
+  height up, down to 85% on small laptop screens. It is wider than the stock
+  Bluetooth popup (`Style.space(462)`) so clipboard text and image previews fit.
 - **Touchpad momentum:** a quick two-finger flick keeps the list scrolling
   after the fingers lift and slows down, like GTK apps and browsers. Mouse
   wheel notches scroll a fixed step.
@@ -372,6 +373,7 @@ bash tests/geometry/run-harness.sh v132 # offscreen: popup header next to the st
 bash tests/geometry/run-harness.sh v1322 # offscreen: every popup close ends the clear question / armed delete; a cancelled OCR job clears its state
 bash tests/geometry/run-harness.sh v133 # offscreen: no edit button, left-click pills (pasteKeep migrates), heading after Pinned and settings History page next to the stock Display panel section
 bash tests/geometry/run-harness.sh v1331 # offscreen: typing during a feedback send is kept; a copy from another app ends an armed delete
+bash tests/geometry/run-harness.sh v1332 # offscreen: empty-state and search-field dimming next to the stock launcher; OCR no longer polls --langs while a job runs
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,

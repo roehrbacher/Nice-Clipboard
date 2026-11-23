@@ -2,6 +2,15 @@
 
 Newest first. Older history is in the git log.
 
+## 1.33.2
+
+Panel design: bring the popup in line with the shared Omarchy plugin panel standard.
+
+- The popup is wider than the stock Bluetooth popup so clipboard text and image previews fit (now said in the README).
+- An OCR language install or removal no longer re-runs `scan.sh --langs` every 3 seconds while the terminal job is running. The done files already watched by FileView drive completion; `scan.sh --langs` runs once when the job finishes (and is retried if the language list has not caught up). The 10-minute safety stop is unchanged. After incognito, `fluxResumePoll` still checks `flux-cli status` every 2 seconds until the phone is back, for at most 10 minutes; that poll stays because it is needed for the incognito fix.
+- Search placeholder and empty-state text keep the same dimming as the stock launcher, stock clipboard and emoji picker (opacity 0.58 / 0.7 / 0.8). Stock panel text fields and dropdowns use `Qt.darker(foreground, 1.6)` instead; those are a different widget.
+- Settings sidebar: unselected section names and the GitHub link use the shared dim colour (`Qt.darker(foreground, 1.4)`) instead of alpha; the "Nice Clipboard" line and the shortcut hint use `bodySmall`, not `caption`.
+
 ## 1.33.1
 
 Pre-release audit fixes.

@@ -141,8 +141,9 @@ Item {
   readonly property var ocrSuggest: root.ocrDemo ? [root.ocrDemo].concat(root.ocrSuggestReal.filter(function(x) { return x.code !== root.ocrDemo.code })) : root.ocrSuggestReal
   // A click installs a language in Omarchy's floating terminal through
   // ocr-install.sh: it shows the exact pacman command and waits for
-  // Enter before sudo asks for the password. The plugin never holds root. Installed languages
-  // are re-read every 3 s (up to 10 min) until the new one shows up.
+  // Enter before sudo asks for the password. The plugin never holds root.
+  // When the terminal job finishes, installed languages are re-read once
+  // (and retried until they show up, for up to 10 min).
   property string ocrInstalling: ""
   property string ocrInstallingName: ""
   // Languages switched off in Settings (state.json "ocrOff"; scan.sh
@@ -163,17 +164,25 @@ Item {
     root.ocrRemovingName = lang.name
     root.ocrWatchTicks = 0
     root.ocrJobStartedSec = Math.floor(Date.now() / 1000)
+    root.ocrAwaitingLangs = false
     Quickshell.execDetached(argv)
     ocrWatchTimer.restart()
   }
   property int ocrWatchTicks: 0
   property real ocrJobStartedSec: 0
+  // True after the terminal job reported success, until --langs confirms it.
+  property bool ocrAwaitingLangs: false
   // The terminal job ended: a cancelled, refused or failed one leaves
   // nothing to wait for; a finished one is confirmed by the language list.
   function ocrJobDone(raw) {
     var end = ClipboardHistory.ocrJobEnded(raw, root.ocrInstalling, root.ocrRemoving, root.ocrJobStartedSec)
     if (!end) return
-    if (end.ok) { if (!ocrLangProc.running) ocrLangProc.running = true; return }
+    if (end.ok) {
+      root.ocrAwaitingLangs = true
+      if (!ocrLangProc.running) ocrLangProc.running = true
+      return
+    }
+    root.ocrAwaitingLangs = false
     if (end.job === "remove") root.ocrRemoving = ""
     else root.ocrInstalling = ""
     if (root.ocrInstalling === "" && root.ocrRemoving === "") ocrWatchTimer.stop()
@@ -186,6 +195,7 @@ Item {
     root.ocrInstallingName = lang.name
     root.ocrWatchTicks = 0
     root.ocrJobStartedSec = Math.floor(Date.now() / 1000)
+    root.ocrAwaitingLangs = false
     // The popup holds the keyboard; close it so the password can be typed.
     if (root.opened) root.close()
     Quickshell.execDetached(argv)
@@ -201,10 +211,11 @@ Item {
     if (root.ocrRemoving !== "" && root.ocrInfo.installed.indexOf(root.ocrRemoving) < 0) {
       root.notify("󰩺", root.ocrRemovingName + " text recognition removed", "", 5000)
       root.ocrRemoving = ""
-      if (root.ocrInstalling === "") ocrWatchTimer.stop()
+      if (root.ocrInstalling === "") { root.ocrAwaitingLangs = false; ocrWatchTimer.stop() }
     }
     if (root.ocrInstalling === "" || root.ocrInfo.installed.indexOf(root.ocrInstalling) < 0) return
     ocrWatchTimer.stop()
+    root.ocrAwaitingLangs = false
     root.notify("󰄬", root.ocrInstallingName + " text recognition installed", "Screenshots and images copied from now on are read in " + root.ocrInstallingName + " too.", 6000)
     root.ocrInstalling = ""
   }
@@ -373,7 +384,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.33.1"
+  readonly property string pluginVersion: "1.33.2"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -1448,6 +1459,14 @@ Item {
         if (st && Array.isArray(st.installed)) { root.ocrInfo = { installed: st.installed, used: String(st.used || ""), env: String(st.env || ""), hints: Array.isArray(st.hints) ? st.hints : [] }; root.ocrInfoUpdated() }
       }
     }
+    onExited: if (root.ocrAwaitingLangs) ocrLangRetry.restart()
+  }
+  // After a successful job, one more --langs if the first read has not
+  // confirmed it yet. Not a poll while the terminal is still running.
+  Timer {
+    id: ocrLangRetry
+    interval: 1500
+    onTriggered: if (root.ocrAwaitingLangs && !ocrLangProc.running) ocrLangProc.running = true
   }
   Process {
     id: ocrSizesProc
@@ -1466,10 +1485,10 @@ Item {
     interval: 3000
     repeat: true
     onTriggered: {
-      if (++root.ocrWatchTicks > 200) { stop(); root.ocrInstalling = ""; root.ocrRemoving = ""; return }
+      if (++root.ocrWatchTicks > 200) { stop(); root.ocrInstalling = ""; root.ocrRemoving = ""; root.ocrAwaitingLangs = false; return }
+      // Fallback if FileView missed the done file. Do not spawn scan.sh here.
       ocrInstallDone.reload()
       ocrRemoveDone.reload()
-      if (!ocrLangProc.running) ocrLangProc.running = true
     }
   }
   FileView {
@@ -1937,11 +1956,14 @@ Item {
               onTextChanged: if (text !== root.filterText) root.setFilter(text)
 
               Text {
+                objectName: "clipSearchPlaceholder"
                 anchors.fill: parent
                 verticalAlignment: Text.AlignVCenter
                 visible: searchInput.text === ""
                 textFormat: Text.PlainText
                 text: "Search clipboard…"
+                // Same dim as the stock launcher and stock clipboard
+                // search placeholders (Menu.qml / omarchy.clipboard).
                 color: root.foreground
                 opacity: 0.58
                 font: searchInput.font
@@ -3373,6 +3395,7 @@ Item {
           }
 
           Column {
+            objectName: "clipEmptyState"
             anchors.centerIn: parent
             // Explicit width: the texts use parent.width, so without it the
             // column had width 0 and "No matches" never showed.
@@ -3381,7 +3404,10 @@ Item {
             visible: displayModel.count === 0
 
             Text {
+              objectName: "clipEmptyIcon"
               text: root.privateMode && root.history.length === 0 ? "󰗹" : "󰅌"
+              // Same dim as the stock launcher, emoji picker and
+              // stock clipboard empty states.
               color: root.selectedText
               opacity: 0.8
               font.family: root.fontFamily
@@ -3391,6 +3417,7 @@ Item {
             }
 
             Text {
+              objectName: "clipEmptyText"
               textFormat: Text.PlainText
               text: root.history.length === 0 ? "Copy something to start" : "No matches"
               color: root.foreground
@@ -3719,7 +3746,7 @@ Item {
             text: "Nice Clipboard"
             color: root.dimText
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.bodySmall
           }
         }
 
@@ -3759,7 +3786,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
                 text: modelData.icon + "   " + modelData.label
-                color: parent.current ? root.foreground : Util.alpha(root.foreground, 0.8)
+                color: parent.current ? root.foreground : root.dimText
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
                 font.bold: parent.current
@@ -3797,7 +3824,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
             text: "󰊤   GitHub"
-            color: Util.alpha(root.foreground, 0.8)
+            color: root.dimText
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
             elide: Text.ElideRight
@@ -3823,7 +3850,7 @@ Item {
           text: "↑ ↓ sections · Esc closes"
           color: root.dimText
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: Style.font.bodySmall
         }
       }
       Rectangle {
