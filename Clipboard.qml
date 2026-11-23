@@ -106,6 +106,11 @@ Item {
   // a single Ctrl-selected row is just a normal pick.
   onOpenedChanged: {
     if (root.opened) { if (root.ocrDemo) root.ocrDemoShown = true; return }
+    // Every way out (Esc, a pick, Alt+Shift+N, the bar icon, IPC hide) ends
+    // edit mode, the clear-history question and an armed delete.
+    root.editOrig = ""
+    root.disarmDelete()
+    root.clearConfirmOpen = false
     if (root.ocrDemoShown) { root.ocrDemoArg = ""; root.ocrDemoShown = false }
     if (ClipboardHistory.queueOnPick(root.queueKeys.length)) root.startQueue()
     else if (root.queueKeys.length) root.queueKeys = []
@@ -155,10 +160,22 @@ Item {
     root.ocrRemoving = lang.code
     root.ocrRemovingName = lang.name
     root.ocrWatchTicks = 0
+    root.ocrJobStartedSec = Math.floor(Date.now() / 1000)
     Quickshell.execDetached(argv)
     ocrWatchTimer.restart()
   }
   property int ocrWatchTicks: 0
+  property real ocrJobStartedSec: 0
+  // The terminal job ended: a cancelled, refused or failed one leaves
+  // nothing to wait for; a finished one is confirmed by the language list.
+  function ocrJobDone(raw) {
+    var end = ClipboardHistory.ocrJobEnded(raw, root.ocrInstalling, root.ocrRemoving, root.ocrJobStartedSec)
+    if (!end) return
+    if (end.ok) { if (!ocrLangProc.running) ocrLangProc.running = true; return }
+    if (end.job === "remove") root.ocrRemoving = ""
+    else root.ocrInstalling = ""
+    if (root.ocrInstalling === "" && root.ocrRemoving === "") ocrWatchTimer.stop()
+  }
   function installOcrLanguage(lang) {
     if (!lang || lang.installed) return
     var argv = ClipboardHistory.ocrInstallArgv(lang.code, root.pluginDir + "/ocr-install.sh", lang.name)
@@ -166,6 +183,7 @@ Item {
     root.ocrInstalling = lang.code
     root.ocrInstallingName = lang.name
     root.ocrWatchTicks = 0
+    root.ocrJobStartedSec = Math.floor(Date.now() / 1000)
     // The popup holds the keyboard; close it so the password can be typed.
     if (root.opened) root.close()
     Quickshell.execDetached(argv)
@@ -353,7 +371,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.32.1"
+  readonly property string pluginVersion: "1.32.2"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -486,12 +504,7 @@ Item {
       + 'exec bash -c "$src" global-keys.sh remove', root.globalKeysScript])
   }
 
-  function close() {
-    root.editOrig = ""
-    root.disarmDelete()
-    root.cancelClearHistory()
-    root.opened = false
-  }
+  function close() { root.opened = false }
 
   function toggle() {
     if (root.opened) root.close()
@@ -1515,8 +1528,26 @@ Item {
     repeat: true
     onTriggered: {
       if (++root.ocrWatchTicks > 200) { stop(); root.ocrInstalling = ""; root.ocrRemoving = ""; return }
+      ocrInstallDone.reload()
+      ocrRemoveDone.reload()
       if (!ocrLangProc.running) ocrLangProc.running = true
     }
+  }
+  FileView {
+    id: ocrInstallDone
+    path: root.ready ? root.dataDir + "/ocr-done-install" : ""
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.ocrJobDone(text())
+    onFileChanged: reload()
+  }
+  FileView {
+    id: ocrRemoveDone
+    path: root.ready ? root.dataDir + "/ocr-done-remove" : ""
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.ocrJobDone(text())
+    onFileChanged: reload()
   }
 
   Process {

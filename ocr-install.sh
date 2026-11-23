@@ -34,6 +34,26 @@ pkg=tesseract-data-$code
 data="${XDG_DATA_HOME:-$HOME/.local/share}/timon.clipboard"
 record="$data/ocr-installed"
 
+# However this ends (done, refused, failed, Ctrl+C, terminal closed), tell
+# the plugin, so its "Installing…" / "Removing…" state ends with it.
+# end_rc: pacman's result once it ran (closing the window during the
+# countdown does not undo an install).
+end_rc=""
+report_end() {
+  local st=$?
+  local rc=${end_rc:-$st} kind=false
+  ((remove)) && kind=true
+  mkdir -p "$data" && chmod 700 "$data" || return
+  local file=$data/ocr-done-install
+  ((remove)) && file=$data/ocr-done-remove
+  printf '{"code":"%s","remove":%s,"rc":%d,"at":%d}\n' "$code" "$kind" "$rc" "$(date +%s)" >"$file.tmp" &&
+    mv -f "$file.tmp" "$file"
+}
+trap report_end EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT  # until Enter; then Ctrl+C acts as before (pacman's own handling)
+trap 'exit 143' TERM
+
 if ((remove)); then
   needed=$(needed_by "$code")
   langs=$(LC_ALL=C "$pacman" -Qq 2>/dev/null | grep -E '^tesseract-data-[a-z_]+$' | grep -vx tesseract-data-osd | wc -l)
@@ -52,6 +72,7 @@ fi
 printf 'Press Enter to continue, Ctrl+C to cancel. '
 read -r || exit 130
 echo
+trap - INT
 had=0
 "$pacman" -Q "$pkg" >/dev/null 2>&1 && had=1
 if [[ ${OCR_INSTALL_DRY:-0} == 1 ]]; then
@@ -61,6 +82,7 @@ else
   "${cmd[@]}"
   rc=$?
 fi
+end_rc=$rc
 if ((rc == 0)); then
   mkdir -p "$data" && chmod 700 "$data"
   if ((remove)); then

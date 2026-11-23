@@ -6,6 +6,8 @@
 #             OCR sizes, sidebar GitHub link, feedback note at 940 and 620 px
 #   v131.qml  1.31.0: delete arm/confirm, Ctrl+Z undo, General / History /
 #             Text recognition / Uninstall pages
+#   v1322.qml 1.32.2: every popup close ends edit / clear question / armed
+#             delete; a cancelled OCR job clears its state
 #   v132.qml  1.32.0: popup header next to the stock PanelHero, edit mode,
 #             "paste and keep open", General / History / Phone / Shortcuts,
 #             subtitle sizes, phone quarantine after incognito
@@ -13,9 +15,9 @@
 # notifiers, xdg-open and the terminal launcher are stubs that only log;
 # feedback goes to a local fake Worker; temp data dir, no watchers, hard
 # timeout. Nothing is installed, removed, sent or pasted.
-#   bash tests/geometry/run-harness.sh v129|v130|v131|v132 [png dir]
+#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131|v132 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."

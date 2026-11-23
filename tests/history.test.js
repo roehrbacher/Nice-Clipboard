@@ -793,3 +793,18 @@ console.log("filters/ocr: ok")}
   assert.strictEqual(H.fluxQuarantineActive(1000, 0, 1000 + 600001), false, "10 min cap")
   console.log("1.32.0: ok")
 }
+
+// 1.32.2: the end of a terminal OCR job, as ocr-install.sh reports it.
+{
+  const end = (o, installing, removing, started) => H.ocrJobEnded(JSON.stringify(o), installing, removing, started)
+  assert.deepStrictEqual(end({ code: "ita", remove: true, rc: 130, at: 100 }, "", "ita", 100), { job: "remove", ok: false }, "cancelled removal")
+  assert.deepStrictEqual(end({ code: "fra", remove: false, rc: 0, at: 105 }, "fra", "", 100), { job: "install", ok: true }, "finished install")
+  assert.deepStrictEqual(end({ code: "eng", remove: true, rc: 3, at: 105 }, "", "eng", 100), { job: "remove", ok: false }, "refused removal")
+  assert.strictEqual(end({ code: "fra", remove: false, rc: 1, at: 99 }, "fra", "", 100), null, "file from before this job")
+  assert.strictEqual(end({ code: "deu", remove: false, rc: 1, at: 105 }, "fra", "", 100), null, "another language")
+  assert.strictEqual(end({ code: "fra", remove: true, rc: 1, at: 105 }, "fra", "", 100), null, "install running, removal reported")
+  assert.strictEqual(end({ code: "fra", remove: false, rc: 1, at: 105 }, "", "", 100), null, "nothing running")
+  assert.strictEqual(H.ocrJobEnded("not json", "fra", "", 0), null)
+  assert.strictEqual(H.ocrJobEnded("", "fra", "", 0), null)
+  console.log("1.32.2: ok")
+}

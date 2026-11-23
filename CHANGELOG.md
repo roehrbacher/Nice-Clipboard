@@ -2,6 +2,13 @@
 
 Newest first. Older history is in the git log.
 
+## 1.32.2
+
+Release checks: a security audit and a review of hidden state machines.
+
+- Fix: picking an item while editing another one, or pressing Alt+Shift+1–0 while the "Clear history?" question or an armed delete was showing, left that mode on. The next time you opened the popup, the edit field or the question was still there. Every way of closing the popup now ends edit mode, the question and an armed delete.
+- Fix: cancelling an OCR language install or removal in the terminal (or closing the terminal, or a refused removal) left "Installing…" or "Removing…" on for up to 10 minutes. `ocr-install.sh` now reports how it ended, and the plugin stops waiting within 3 seconds. Closing the terminal during the countdown after a good install still counts as installed.
+
 ## 1.32.1
 
 Code quality pass.

@@ -47,4 +47,20 @@ out=$(printf '\n' | OCR_INSTALL_DRY=1 bash "$s" --remove eng English); rc=$?
 printf '#!/bin/bash\ncase $1 in -Qq) printf "tesseract-data-osd\\ntesseract-data-deu\\n";; -Qi) printf "Name : x\\nRequired By : tesseract\\n";; esac\n' > "$t/one"; chmod +x "$t/one"
 out=$(printf '\n' | NICE_CLIPBOARD_PACMAN="$t/one" OCR_INSTALL_DRY=1 bash "$s" --remove deu German); rc=$?
 [[ $rc == 3 && $out == *"last language"* ]] && echo "ok   last language kept" || { echo "FAIL last: rc=$rc $out"; fail=1; }
+# 1.32.2: every end is reported in ocr-done, so the plugin stops waiting.
+done_json() { jq -c 'del(.at)' "$XDG_DATA_HOME/timon.clipboard/ocr-done-${1:-install}" 2>/dev/null; }
+OCR_INSTALL_DRY=1 bash "$s" spa Spanish </dev/null >/dev/null
+[[ $(done_json) == '{"code":"spa","remove":false,"rc":130}' ]] && echo "ok   cancelled at the prompt: reported (rc 130)" || { echo "FAIL cancel report: $(done_json)"; fail=1; }
+printf '\n' | OCR_INSTALL_DRY=1 bash "$s" --remove eng English >/dev/null
+[[ $(done_json remove) == '{"code":"eng","remove":true,"rc":3}' ]] && echo "ok   refused removal: reported (rc 3)" || { echo "FAIL refuse report: $(done_json remove)"; fail=1; }
+printf '\n' | OCR_INSTALL_DRY=1 OCR_INSTALL_CLOSE_AFTER=0 bash "$s" ita Italian >/dev/null
+[[ $(done_json) == '{"code":"ita","remove":false,"rc":0}' ]] && echo "ok   done: reported (rc 0)" || { echo "FAIL done report: $(done_json)"; fail=1; }
+sleep 5 | OCR_INSTALL_DRY=1 bash "$s" deu German >/dev/null 2>&1 & sleep 1; pkill -INT -f "ocr-install.sh deu German"; wait 2>/dev/null
+[[ $(done_json) == '{"code":"deu","remove":false,"rc":130}' ]] && echo "ok   Ctrl+C at the prompt: reported (rc 130)" || { echo "FAIL ctrl-c report: $(done_json)"; fail=1; }
+sleep 5 | OCR_INSTALL_DRY=1 bash "$s" fra French >/dev/null 2>&1 & sleep 1; pkill -HUP -f "ocr-install.sh fra French"; wait 2>/dev/null
+[[ $(done_json) == '{"code":"fra","remove":false,"rc":129}' ]] && echo "ok   terminal closed at the prompt: reported (rc 129)" || { echo "FAIL hangup report: $(done_json)"; fail=1; }
+(printf '\n'; sleep 5) | OCR_INSTALL_DRY=1 OCR_INSTALL_CLOSE_AFTER=4 bash "$s" spa Spanish >/dev/null 2>&1 & sleep 1; pkill -HUP -f "ocr-install.sh spa Spanish"; wait 2>/dev/null
+[[ $(done_json) == '{"code":"spa","remove":false,"rc":0}' ]] && echo "ok   closed during the countdown after a good install: still rc 0" || { echo "FAIL countdown report: $(done_json)"; fail=1; }
+out=$(printf '\n' | OCR_INSTALL_DRY=1 bash "$s" "x;y" 2>&1)
+[[ $(done_json) == '{"code":"spa","remove":false,"rc":0}' ]] && echo "ok   a refused code writes nothing" || { echo "FAIL bad code wrote: $(done_json)"; fail=1; }
 exit $fail

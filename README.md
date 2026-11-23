@@ -365,7 +365,7 @@ bash tests/flux-pause.test.sh  # Flux pause/resume with a stub systemctl (never 
 bash tests/queue.test.sh       # paste queue (stub hyprctl / wl-copy / notifier), incl. quiet cancel
 bash tests/version.test.sh      # Clipboard.qml version (sent with feedback) = manifest = CHANGELOG
 bash tests/ocr-hints.test.sh    # OCR language hints from locale / LANGUAGE / locale.conf / keyboard layout (stub hyprctl)
-bash tests/ocr-install.test.sh  # OCR install script: shows the command, waits for Enter, rejects odd codes (dry run, no sudo)
+bash tests/ocr-install.test.sh  # OCR install script: shows the command, waits for Enter, rejects odd codes, reports how it ended (dry run, no sudo)
 bash tests/global-keys.test.sh  # plugin-added global keys: only free keys bound, taken ones reported, remove drops only ours (stub hyprctl)
 bash tests/send.test.sh         # Send via Flux: fluxd socket only, no wl-copy, history untouched (fake fluxd)
 bash tests/slots.test.sh        # Alt+Shift slots: copy-slot / paste-slot.sh (and old paste-pinned.sh) = the popup's mapping
@@ -374,6 +374,7 @@ bash tests/geometry/run-harness.sh v129 # offscreen: slot hints and keys, demo b
 bash tests/geometry/run-harness.sh v130 # offscreen: update check off / on (stub), OCR sizes, sidebar link, feedback note at 940 and 620 px
 bash tests/geometry/run-harness.sh v131 # offscreen: delete confirm, Ctrl+Z undo, General / History / OCR / Uninstall pages (add a dir to keep the PNGs)
 bash tests/geometry/run-harness.sh v132 # offscreen: popup header next to the stock PanelHero, edit mode, paste and keep open, settings pages, subtitle sizes, phone quarantine
+bash tests/geometry/run-harness.sh v1322 # offscreen: every popup close ends edit / clear question / armed delete; a cancelled OCR job clears its state
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,

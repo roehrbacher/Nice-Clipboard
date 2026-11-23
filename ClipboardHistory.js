@@ -654,6 +654,18 @@ function ocrInstallArgv(code, script, name, remove) {
   if (!/^[a-z]{3}(_[a-z]{3,4})?$/.test(c) || !script) return []
   return terminalArgv(script, (remove ? ["--remove"] : []).concat([c, String(name || c)]))
 }
+// ocr-install.sh leaves {code, remove, rc, at} in ocr-done-install or
+// ocr-done-remove when it exits.
+// Which running job that ended: { job: "install" | "remove", ok } or null
+// (another code, or a file from before the job started).
+function ocrJobEnded(raw, installing, removing, startedSec) {
+  var j = null
+  try { j = JSON.parse(String(raw || "")) } catch (e) { return null }
+  if (!j || typeof j.code !== "string" || j.code === "" || !(Number(j.at) >= startedSec)) return null
+  var job = j.remove === true ? "remove" : "install"
+  if (j.code !== (job === "remove" ? removing : installing)) return null
+  return { job: job, ok: j.rc === 0 }
+}
 // Settings > Uninstall: uninstall.sh [--languages] in the terminal.
 function uninstallArgv(script, languages) {
   return terminalArgv(script, languages ? ["--languages"] : [])
@@ -1603,6 +1615,7 @@ if (typeof module !== "undefined") {
     clickActionOf: clickActionOf,
     dragPlan: dragPlan,
     ocrInstallArgv: ocrInstallArgv,
+    ocrJobEnded: ocrJobEnded,
     terminalArgv: terminalArgv,
     uninstallArgv: uninstallArgv,
     ocrLanguageName: ocrLanguageName,
