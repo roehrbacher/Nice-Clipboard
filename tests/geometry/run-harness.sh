@@ -13,6 +13,8 @@
 #             from another app ends an armed delete
 #   v1332.qml 1.33.2: empty-state and search-field dimming next to the
 #             stock launcher; OCR no longer polls --langs while a job runs
+#   v1333.qml 1.33.3: "Select, paste & close" closes and pastes into the
+#             window that had the keyboard when the popup opened
 #   v1322.qml 1.32.2: every popup close ends the clear question / armed
 #             delete; a cancelled OCR job clears its state
 #   v132.qml  1.32.0: popup header next to the stock PanelHero, no edit
@@ -24,7 +26,7 @@
 # timeout. Nothing is installed, removed, sent or pasted.
 #   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."

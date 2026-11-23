@@ -3,11 +3,12 @@
 # index, so clipboard text never shows up in a process list or a log.
 #
 #   clipboard.sh init                     create the data dir (user-only), import stock history once
-#   clipboard.sh paste <index>            copy entry <index> and paste it (Shift+Insert)
+#   clipboard.sh paste <index> [window]   copy entry <index> and paste it (Shift+Insert) into
+#                                         Hyprland window [window] (address), else the focused one
 #   clipboard.sh copy <index>             copy entry <index> only
 #   clipboard.sh copy-slot <1-10>         copy slot n: pinned entries first, then the newest
 #                                         history ones (global Alt+Shift+1…9, 0; paste-slot.sh)
-#   clipboard.sh paste-md <index>         paste the HTML of entry <index> as Markdown:
+#   clipboard.sh paste-md <index> [window] paste the HTML of entry <index> as Markdown:
 #                                         pandoc if installed, else html2md.py; plain text if both fail
 #   clipboard.sh markdown <index>         print that Markdown (tests)
 #   clipboard.sh current                  print a key of what is on the clipboard (text:<md5> or
@@ -52,14 +53,49 @@ copy_entry() {
 # does), so keys still held from the shortcut (Alt of Alt+1) do not merge in:
 # wtype's virtual keyboard shares the modifier state, and Alt+Shift+Insert
 # pastes nothing. wtype stays the fallback when hyprctl is missing or fails.
+# send_paste [window]: the popup passes the Hyprland address of the window
+# that had the keyboard when it opened. That window is focused again (when
+# it isn't) and the keys go to it, so the paste does not depend on what
+# Hyprland focuses after the popup closes: after a mouse click the popup's
+# fading full-screen surface is still under the pointer and the keyboard
+# often ends up on nothing. Without a usable address: the focused window.
 # CLIPBOARD_PASTE_DRY=1 prints the dispatches instead (tests).
 send_paste() {
-  local d='hl.dsp.send_key_state({ mods = "SHIFT", key = "Insert", state = "%s" })'
-  if [[ ${CLIPBOARD_PASTE_DRY:-0} == 1 ]]; then printf "dispatch $d\n" down up; return 0; fi
+  local t=${1:-} win="" cur
+  t=${t#0x}
+  [[ $t =~ ^[0-9a-fA-F]{1,16}$ && ! $t =~ ^0+$ ]] && win="address:0x${t,,}"
+  local d='hl.dsp.send_key_state({ mods = "SHIFT", key = "Insert", state = "%s"%s })'
+  local w=""
+  [[ -n $win ]] && w=", window = \"$win\""
+  if [[ ${CLIPBOARD_PASTE_DRY:-0} == 1 ]]; then
+    [[ -n $win ]] && printf 'dispatch hl.dsp.focus({ window = "%s" })\n' "$win"
+    # shellcheck disable=SC2059
+    printf "dispatch $d\n" down "$w" up "$w"
+    return 0
+  fi
+  command -v hyprctl >/dev/null || { wtype -M shift -k Insert -m shift 2>/dev/null || true; return 0; }
+  if [[ -n $win ]]; then
+    cur=$(timeout 3 hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty' 2>/dev/null)
+    if [[ ${cur,,} != "$win" && ${cur,,} != "${win#address:}" ]]; then
+      if [[ $(timeout 3 hyprctl dispatch "hl.dsp.focus({ window = \"$win\" })" 2>/dev/null) == ok ]]; then
+        sleep 0.05
+      else
+        w="" # window gone: paste into whatever is focused
+      fi
+    fi
+  fi
+  local down
   # shellcheck disable=SC2059
-  if command -v hyprctl >/dev/null && [[ $(timeout 3 hyprctl dispatch "$(printf "$d" down)" 2>/dev/null) == ok ]]; then
+  down=$(timeout 3 hyprctl dispatch "$(printf "$d" down "$w")" 2>/dev/null)
+  if [[ $down != ok && -n $w ]]; then
+    w=""
+    # shellcheck disable=SC2059
+    down=$(timeout 3 hyprctl dispatch "$(printf "$d" down "")" 2>/dev/null)
+  fi
+  if [[ $down == ok ]]; then
     sleep 0.05
-    timeout 3 hyprctl dispatch "$(printf "$d" up)" >/dev/null 2>&1 || timeout 3 hyprctl dispatch "$(printf "$d" up)" >/dev/null 2>&1
+    # shellcheck disable=SC2059
+    timeout 3 hyprctl dispatch "$(printf "$d" up "$w")" >/dev/null 2>&1 || timeout 3 hyprctl dispatch "$(printf "$d" up "$w")" >/dev/null 2>&1
     return 0
   fi
   wtype -M shift -k Insert -m shift 2>/dev/null || true
@@ -85,7 +121,7 @@ paste | copy)
   copy_entry "$2" || exit 1
   [[ $1 == copy ]] && exit 0
   sleep 0.15
-  send_paste
+  send_paste "${3:-}"
   ;;
 current)
   # "empty" when nothing is on the clipboard at all (the popup then
@@ -123,7 +159,7 @@ markdown | paste-md)
   printf '%s' "$md" | sha256sum | awk '{print $1}' >"$DATA_DIR/skip-next"
   printf '%s' "$md" | wl-copy || exit 1
   sleep 0.15
-  send_paste
+  send_paste "${3:-}"
   # The target app reads the paste on its own time; give it a second, then
   # restore only if the clipboard still holds our Markdown.
   sleep 1

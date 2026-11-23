@@ -364,6 +364,7 @@ bash tests/ocr-hints.test.sh    # OCR language hints from locale / LANGUAGE / lo
 bash tests/ocr-install.test.sh  # OCR install script: shows the command, waits for Enter, rejects odd codes, reports how it ended (dry run, no sudo)
 bash tests/global-keys.test.sh  # plugin-added global keys: only free keys bound, taken ones reported, remove drops only ours (stub hyprctl)
 bash tests/send.test.sh         # Send via Flux: fluxd socket only, no wl-copy, history untouched (fake fluxd)
+bash tests/paste-target.test.sh # popup paste goes back to the window from before the popup (stub hyprctl / wl-copy, no keys sent)
 bash tests/slots.test.sh        # Alt+Shift slots: copy-slot / paste-slot.sh (and old paste-pinned.sh) = the popup's mapping
 bash tests/uninstall.test.sh    # uninstall.sh: shows every step, waits for Enter, only removes recorded, unneeded languages (fake HOME, stubs)
 bash tests/geometry/run-harness.sh v129 # offscreen: slot hints and keys, demo banner, settings window reopen after Super+W, feedback sent state
@@ -374,6 +375,7 @@ bash tests/geometry/run-harness.sh v1322 # offscreen: every popup close ends the
 bash tests/geometry/run-harness.sh v133 # offscreen: no edit button, left-click pills (pasteKeep migrates), heading after Pinned and settings History page next to the stock Display panel section
 bash tests/geometry/run-harness.sh v1331 # offscreen: typing during a feedback send is kept; a copy from another app ends an armed delete
 bash tests/geometry/run-harness.sh v1332 # offscreen: empty-state and search-field dimming next to the stock launcher; OCR no longer polls --langs while a job runs
+bash tests/geometry/run-harness.sh v1333 # offscreen: "Select, paste & close" closes and hands the paste to clipboard.sh with the window from before the popup
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,

@@ -2,6 +2,10 @@
 
 Newest first. Older history is in the git log.
 
+## 1.33.3
+
+- Fix: with "Select, paste & close" (the default), a left click closed the popup but often pasted nothing. The paste is a Shift+Insert sent to whatever window has the keyboard a moment after the popup closes, and after a mouse click Hyprland often gave the keyboard to nothing: the popup's fading full-screen surface was still under the pointer. The popup now remembers the window that had the keyboard when it opened, and `clipboard.sh paste <index> <window>` focuses that window again (only if needed) and sends the keys to it. Enter, Alt+Shift+N in the popup and the Markdown paste use the same path. If that window was closed meanwhile, or there is none, the paste goes to the focused window as before.
+
 ## 1.33.2
 
 Panel design: bring the popup in line with the shared Omarchy plugin panel standard.

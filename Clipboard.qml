@@ -108,7 +108,7 @@ Item {
   // the popup closes (any way except Esc, which clears the selection first);
   // a single Ctrl-selected row is just a normal pick.
   onOpenedChanged: {
-    if (root.opened) { if (root.ocrDemo) root.ocrDemoShown = true; return }
+    if (root.opened) { root.pasteTarget = root.activeWindowAddress(); if (root.ocrDemo) root.ocrDemoShown = true; return }
     // Every way out (Esc, a pick, Alt+Shift+N, the bar icon, IPC hide) ends
     // the clear-history question and an armed delete.
     root.disarmDelete()
@@ -384,7 +384,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.33.2"
+  readonly property string pluginVersion: "1.33.3"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -1230,7 +1230,7 @@ Item {
     if (ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.close(); return }
     root.dropQueue()
     root.opened = false
-    Quickshell.execDetached([root.helper, "paste", String(hi)])
+    Quickshell.execDetached(root.helperArgs("paste", hi))
   }
 
   function setFilter(nextFilter) {
@@ -1253,12 +1253,27 @@ Item {
   }
 
   // ---- actions ----------------------------------------------------------
+  // The app window that had the keyboard when the popup opened (Hyprland
+  // address, hex). A paste goes back to it: clipboard.sh focuses it and
+  // sends Shift+Insert to it, instead of to whatever Hyprland focuses after
+  // the popup closes (after a mouse click that was often nothing).
+  property string pasteTarget: ""
+  function activeWindowAddress() {
+    var t = Hyprland.activeToplevel
+    var a = t && t.address ? String(t.address) : ""
+    return a !== "" && a !== "0" ? a : ""
+  }
+  function helperArgs(action, historyIndex) {
+    var args = [root.helper, action, String(historyIndex)]
+    if ((action === "paste" || action === "paste-md") && root.pasteTarget !== "") args.push(root.pasteTarget)
+    return args
+  }
   function runOnIndex(index, action) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
     root.dropQueue()
     root.opened = false
-    Quickshell.execDetached([root.helper, action, String(row.historyIndex)])
+    Quickshell.execDetached(root.helperArgs(action, row.historyIndex))
   }
 
   // With 2+ rows selected, Enter / click / Alt+N close the popup, which
