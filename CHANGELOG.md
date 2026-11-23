@@ -2,6 +2,13 @@
 
 Newest first. Older history is in the git log.
 
+## 1.34.0
+
+First public release.
+
+- "Check for updates" (Settings > General) is now on by default. When the popup opens and the last check is 24 hours or more ago, it asks the public GitHub API for the newest release (anonymous, nothing about you is sent). This also turns it on for installs from before 1.34.0, which always saved it as off; once you switch it in Settings, your choice is kept (`updateCheckSet` in `state.json`).
+- README rewritten for people: picture, install command up top, how you'll use it, privacy. Developer notes moved to `docs/DEVELOPMENT.md`.
+
 ## 1.33.5
 
 - Fix: Ctrl+Z after an unpin (and pin / unpin themselves) blinked. The list matched rows by content plus pinned state, so a row whose pin changed counted as a different row: it was removed and a new one made in its new place, and Ctrl+Z also moved the cursor and the scroll in a second step after the rebuild. Rows are now matched by content only, so a pin change moves the same row and updates its pin and heading; Ctrl+Z puts the cursor on the restored row in the same step and touches the scroll once, only if the row is out of view. Delete and its Ctrl+Z only ever add or remove that one row.

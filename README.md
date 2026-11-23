@@ -4,395 +4,76 @@
 
 A clipboard history for [Omarchy](https://omarchy.org) that looks like it ships with it.
 
-- **Flux integration:** send any item to your phone, see what came from it, and incognito pauses phone sync.
-- **Paste queue:** pick several items in order, then paste them one after another.
-- **Nice shortcuts:** Alt+V opens it, Alt+Shift+1–0 pastes your pins and newest items from anywhere, everything works from the keyboard.
-- **Screenshot text recognition (OCR):** copy the text out of any copied screenshot.
-- **QR code recognition:** open a QR link, or copy a Wi-Fi password straight from a QR code.
-- **Omarchy theme colours:** follows your current theme, popup sits under its bar icon.
-- **Incognito mode:** saves nothing while it's on.
-- **Paste as Markdown:** copied web or Docs formatting pastes as clean Markdown.
-- **Smart search:** regex plus filters like `type:image`, `app:firefox` or `today`.
-- **Pinned items** that never expire, and **password-manager copies are never stored**.
-
-<!-- Preview image goes here, e.g. ![Nice Clipboard](preview.png) -->
-
-It is built on Omarchy's own clipboard manager (`omarchy.clipboard`) and
-**replaces** it as a clone (`"clonedFrom": "omarchy.clipboard"`), so there is
-only ever one clipboard watcher running. Your existing stock history is
-imported once on first start. To hear about upstream changes, run
-`omarchy-upstream-drift` after `omarchy update`: it lists what Omarchy changed in its stock clipboard since this copy.
-
-# Details for Agents
-
-## Requirements
-
-- Omarchy 4 (the Quickshell-based shell) with `wl-clipboard`.
-- Optional: `zxing-cpp` (or `zbar`) to read QR codes in copied images,
-  `tesseract` plus language data for "Copy text from screenshot",
-  `python` for Paste as Markdown, and [Flux](https://github.com/bjarneo/flux)
-  for phone sync. Everything else works without them.
-
-## Behaviour
-
-- **History:** newest first, a re-copied item moves to the top. An item you
-  unpin goes to the top of History too (the clipboard keeps what it has),
-  and its days start over. Unpinned items
-  are deleted 1, 2, 5 (default), 10 or 20 days after they were copied (pick it
-  in settings); pinned items are never deleted. Day headings: History (today),
-  Yesterday, then the date. Text and images (PNG, JPEG, WebP, GIF,
-  …); copied files show their file name and an image preview.
-- **Pinned:** shown in their own section at the top, survive "clear history"
-  and the limit.
-- **Popup:** opens right under the clipboard icon in the bar, like the stock
-  Wi-Fi popup (same look, the bar's open-panel underline under the icon,
-  click outside or open another bar popup to close),
-  also when opened with Alt+V. Without the bar icon (bar widget not in the
-  layout) it opens at the top-left corner. A compact list, no preview pane;
-  hover or select a row for its actions: phone (send), trash, pin.
-- **Size:** the popup scales with the screen: full size from 1080 px logical
-  height up, down to 85% on small laptop screens. It is wider than the stock
-  Bluetooth popup (`Style.space(462)`) so clipboard text and image previews fit.
-- **Touchpad momentum:** a quick two-finger flick keeps the list scrolling
-  after the fingers lift and slows down, like GTK apps and browsers. Mouse
-  wheel notches scroll a fixed step.
-- **Header.** It uses the stock `PanelHero` and `PanelSeparator`, like the
-  Wi-Fi, Bluetooth and Display popups. The clipboard icon sits top left,
-  "Clipboard" is in the title size, and a caps line under it shows
-  `54 items · 3 pinned` or "Incognito · nothing is saved". The search button
-  sits on the right. While you search, the field takes the title's place.
-- **Footer (one row):** Clear history on the left; the Incognito switch, a
-  phone button (only when Flux is installed) and a gear icon on the right.
-  The phone button's icon and tooltip show the Flux state ("<phone> connected
-  via Flux", "No phone connected", "Flux paused (incognito)", "Flux not
-  running"); clicking it closes the popup and opens Flux (`flux-cli open`). The gear opens the settings
-  window (about 900 × 650, tiled like Flux; the popup closes): a sidebar of
-  sections (with "Settings" and the version on top) and one section at a time
-  on the right, with its title and a short description: General (incognito,
-  what a left click does, check for updates), History (delete after, clear right there in the window), Phone (Flux) (what Nice Clipboard adds to Flux, phone, last sync, "Send
-  current clipboard"), Text recognition (OCR) (its page: "Languages for text recognition (OCR)"), Search filters,
-  Shortcuts, Feedback, and a GitHub link at the bottom of the sidebar. ↑ ↓ pick a section, Esc closes. Closing it any other
-  way (Super+W, the window's close button) works too; the gear opens it again.
-- **Flux state on the phone button:** a phone with a check when a phone is
-  connected, a crossed-out phone otherwise (paused: accent colour). Hovering the phone action
-  of a row shows "Send via Flux": it sends only that item to the phone
-  (straight to fluxd), your computer's clipboard and the history order stay
-  as they are.
-- **Incognito:** nothing new is saved (text or images) until you turn it
-  off; a small "Incognito" badge in the popup shows it. Survives a restart.
-- **Incognito pauses Flux too:** if [Flux](https://github.com/bjarneo/flux)
-  (`fluxd.service`) runs, incognito stops it, so copies are not synced to
-  the phone or saved in Flux's history; turning incognito off starts it
-  again. The footer phone button then shows a crossed-out phone, and the notification says "Flux sync paused". See "Flux" below.
-- **Deleting an item** only removes it from the history; the current
-  clipboard stays as it is, even when it holds the same text. ("Clear history"
-  still empties the clipboard if it held an unpinned item.)
-- **Skipped automatically:** copies from password managers
-  (`x-kde-passwordManagerHint`, `CLIPBOARD_STATE=sensitive`), text over 4 MiB,
-  images over 25 MiB.
-- **Storage:** only `~/.local/share/timon.clipboard/` (folder `0700`, files
-  `0600`): `history.json`, `state.json`, `images/`, plus the marker
-  `~/.local/state/timon.clipboard/flux-paused` while this plugin has Flux
-  paused. Nothing is logged, synced or sent anywhere. Unreferenced images are deleted automatically.
-- Clipboard text is read by index from that file, never passed on a command
-  line, so it does not show up in process lists. Search text copied with
-  Ctrl+C goes to `wl-copy` over stdin for the same reason, and stays on the
-  clipboard after the popup closes.
-
-- **From phone:** with Flux, text that came from the phone gets a small
-  "From phone" label, and the footer phone button shows a phone while a paired
-  phone is online.
-
-Bar icon: add `{ "id": "timon.clipboard" }` to a bar section (for example the
-right section, before the audio icon). It uses the standard
-fixed-width bar icon slot, so switching icons never shifts its neighbours.
-Left click opens / closes the history, right click toggles incognito, and it
-turns into the incognito icon (󰗹) while incognito is on. It has no hover tooltip.
-
-## Text in images, QR codes and search filters
-
-- Images are read in the background (niced): text with `tesseract`
-  (English, plus German when `tesseract-data-deu` is installed) and QR codes
-  with `zbarimg`. The text is searchable. Hovering an image row shows
-  **Copy text**; a QR link or e-mail gets the open button, a Wi-Fi QR code
-  copies the password, any other QR code copies its text. Without the tools
-  the buttons simply don't appear: `sudo pacman -S tesseract tesseract-data-eng tesseract-data-deu zbar`.
-- OCR languages (Settings > Text recognition (OCR)): every installed
-  language is a row with its size on disk, an **in use** switch and
-  **Remove**. Images are read in every language that is in use (all
-  installed ones by default; at least one stays on; `OMARCHY_OCR_LANGS`, if
-  set, decides instead, like Omarchy's own text capture). Remove opens the
-  terminal with `sudo pacman -R tesseract-data-<code>` and waits for Enter;
-  a pack something else needs is kept and says why (English: "Needed by
-  omasnap", Omarchy's screenshot tool), and so is the last language
-  (tesseract needs one). Below, **Add language** lists the other common
-  languages with their download size; a click installs one. Sizes come
-  from the local pacman database (`pacman -Si` / `-Qi`, read when the
-  settings window opens); nothing is shown when pacman has no data. Omarchy's floating terminal opens with the plugin's
-  `ocr-install.sh`, which first shows what it will run, e.g. "Nice Clipboard
-  will install German text recognition: `sudo pacman -S --needed
-  tesseract-data-deu`", and waits: Enter continues (then sudo asks for your
-  password), Ctrl+C cancels. pacman installs the signed Arch package, which
-  then gets updated with the rest of your system. When it is done the window
-  says so and closes after 5 s. The plugin never holds root. It re-reads the installed languages every 3 s until the new one
-  shows up and then says so.
-- Missing languages are suggested: the plugin looks (read-only) at your
-  locale, Hyprland keyboard layouts and hunspell dictionaries. A small
-  banner at the top of the popup says e.g. "Based on your keyboard layout:
-  install text recognition (OCR) for German?" with **Install** and **Not
-  now**; settings show the same. Not now hides it for good (both places).
-  To see the banner on a machine where nothing is suggested (developer
-  test): `omarchy-shell shell call timon.clipboard ocrBannerDemo x` (or a code
-  like `fra`), then open the popup; it goes away with Not now or when the
-  popup closes, and nothing is saved. To bring back real suggestions you
-  dismissed: `f=~/.local/share/timon.clipboard/state.json; jq '.ocrDismissed = []' "$f" > "$f.new" && mv "$f.new" "$f"`
-  (the plugin watches that file and picks it up right away).
-- Search filters, combinable with normal search text: `type:image|screenshot|text|link|color|file`,
-  `app:<window class>` (recorded from 1.16.0 on), `is:pinned`, `today`, `yesterday`, `<30m`, `<2h`, `<3d`.
-
-## Paste as Markdown, paste queue, password managers
-
-- **Paste as Markdown:** a copy from a browser or office app also carries
-  HTML. When it has formatting (headings, links, lists, bold/italic, code,
-  quotes, tables) the HTML is kept with the entry (up to 256 KiB) and the row
-  shows a Markdown button (󰍔, "Paste as Markdown"). It converts with
-  `pandoc -t gfm` when pandoc is installed, else with the bundled
-  `html2md.py` (Python standard library, handles Google Docs' styled
-  spans); if neither works it pastes the plain text.
-- **Paste queue:** Ctrl+click rows (or Ctrl+Space on the selected one); each
-  gets a numbered badge in click order. The footer's Clear history button
-  shows "Paste queue: N items in order"; closing the popup starts the queue. Esc clears the selection first.
-  Starting closes the popup and shows a notification titled "Paste queue ready:"
-  with body "Paste 1 of N. Esc cancels.". Every Super+V (or Ctrl+V) then pastes
-  the next item and updates the same notification ("Pasted 1 of 4. Super+V pastes
-  2 next. Esc cancels."); after the last one it says "Pasted N of N. Done.".
-  Esc cancels (and still reaches the window), so does the footer
-  button "Pasting k of N · Cancel" when you open the popup again, and a
-  queue ends by itself after 15 minutes without a paste.
-  How it works: while a queue runs, `queue.sh` binds Super+V, Ctrl+V and Esc at
-  runtime (`hyprctl eval 'hl.bind(...)'`, removed with `hl.unbind` when it
-  ends). Super+V or Ctrl+V puts the next item on the clipboard and sends
-  Shift+Insert, the same way Alt+Shift+N does. When the queue ends (done, Esc,
-  a new pick, the watchdog), Super+V gets Omarchy's universal paste back
-  (Shift+Insert in terminals, Ctrl+V elsewhere). A Hyprland config reload also
-  restores it. Only Super+V and Ctrl+V advance the queue (Ctrl+Shift+V in a
-  terminal pastes the current item without advancing). Detecting pastes from the
-  clipboard itself (`wl-copy --paste-once`) does not work here: every clipboard
-  watcher (this plugin, Flux) reads each copy and would use the paste up.
-- **Password managers:** copies marked `x-kde-passwordManagerHint` are never
-  stored. Bitwarden desktop sets it on Linux for copied passwords (since
-  2025, through arboard's `exclude_from_history`), as do KeePassXC and
-  `wl-copy --sensitive`; wl-paste 2.3.0 then reports `CLIPBOARD_STATE=sensitive`,
-  which Flux also honours, so these copies are not sent to the phone either.
-  No guessing from window titles or browser fields.
-
-## Feedback
-
-Settings > Feedback: type an idea, bug or wish and press Enter or Send
-(Shift+Enter starts a new line). The text is posted to the Nice Clipboard feedback Worker at
-`https://feedback.roehrbacher.com/feedback` (a Cloudflare Worker that files it
-as an issue in a private repo; rate limited, no IP stored) and the box says
-"Feedback sent, thanks! Timon reads every message." with Omarchy's check icon, on its own line under Send. No browser, no GitHub account. Only the text and the plugin
-version are sent. If sending fails, the text stays in the box. The page also
-links the [GitHub page](https://github.com/roehrbacher/Nice-Clipboard).
-
-## Privacy
-
-History stays on this computer in `~/.local/share/timon.clipboard/`
-(folder `0700`, files `0600`). Nothing is logged, synced or sent anywhere by
-this plugin; the exceptions are feedback (what you type in Settings >
-Feedback goes to `https://feedback.roehrbacher.com/feedback`, and only when
-you press Send) and the optional update check (off by default, see Update). Password-manager copies are never stored, and incognito mode
-stores nothing. Phone sync only happens if you run Flux yourself, and
-incognito pauses it.
-
-## Flux
-
-`fluxd` watches the clipboard itself (its own `wl-paste --watch`) and has no
-pause switch of its own that fits: its `autoClipboard` setting would still keep
-the last incognito copy in memory and hand it to the phone when it reconnects,
-and it would change Flux's config file. So `flux-pause.sh` simply stops and
-starts Flux's systemd user unit (`systemctl --user stop|start fluxd.service`).
-Nothing of Flux (binary, unit, config) is touched, so a Flux update cannot undo
-this. When fluxd starts again it records the current clipboard without sending
-it, so nothing copied during incognito reaches the phone.
-
-The phone keeps what you send from it while fluxd is stopped, and delivers
-it as soon as Flux is back. Flux has no way to drop it. So after incognito
-ends, new text waits until `flux-cli status` says where it came from. This
-lasts until 5 s after the phone is online again, at most 10 minutes. Text from
-the phone is not saved and the clipboard is cleared. Other text is saved as
-usual. Flux's own history still lists the phone item.
-
-- Flux is only started again if this plugin stopped it (marker file in
-  `~/.local/state/timon.clipboard/`). If Flux was off already, or you ran
-  `flux-cli off` meanwhile, it stays off.
-- Every shell start runs the same sync: if incognito ended while the shell
-  was down (crash, reboot), Flux is started; if incognito is still on after
-  a reboot, the fluxd that systemd started at login is stopped again.
-- Uninstalling (`clipboard.sh wipe`) starts Flux first if we paused it.
-- No Flux installed: nothing happens, nothing is logged.
-- While paused, the whole phone link is down (notifications, SMS, calls, file
-  transfer, phone approval of sudo), and Flux's own bar icon says "fluxd is not
-  running". That is the price of a clean pause; it comes back with incognito
-  off. Starting Flux from its own panel during incognito is allowed and
-  sticks until the next incognito toggle or shell start.
-
-By hand: `flux-pause.sh status` (`paused`, `running`, `off`, `absent`),
-`flux-pause.sh resume` (start Flux if we stopped it).
-
-IPC (for scripts): `omarchy-shell shell call timon.clipboard toggleIncognito x`,
-`setIncognito on|off`, `status x` (includes `incognito` and `fluxPaused`). The
-older names `togglePrivate` and `setPrivateMode` still work.
-
-
-## Shortcuts
-
-| Key | What it does |
-|---|---|
-| **Alt+V** | open / close clipboard history |
-| Super+Shift+V | the same (GNOME default key, optional binding) |
-| Super+Ctrl+V | the same (stock Omarchy key, routed to this plugin) |
-| **Super+Shift+Ctrl+V** | incognito on/off from anywhere (with a notification) |
-| Alt+Shift+1–0 | (added by the plugin, see Install) paste slot 1…10 from anywhere: your pinned items first (in their order), then the newest history items fill the rest. With 4 pins, Alt+Shift+5 is the newest history item and Alt+Shift+0 the 6th. (runs `paste-slot.sh`; closes the popup first if it is open) |
-
-In the popup:
-
-| Key | What it does |
-|---|---|
-| type | search (case-insensitive regex; invalid regex = plain text) |
-| ↑ ↓ / Ctrl+K Ctrl+J, PgUp PgDn, Home End | move through the list |
-| Enter / click | paste into the window you came from (click: per Settings > General > "Left click action": "Select, paste & close", the default, or "Select (copy only)", which leaves the popup open) |
-| Shift+Enter | copy only (select it without pasting) |
-| Alt+Enter | open (URL in browser, text in editor, image in editor) |
-| Ctrl+click / Ctrl+Space | add the row to the paste queue (numbered 1, 2, 3 …); again takes it out |
-| Ctrl+click / Ctrl+Space 2+ items, then close the popup (Enter, click, Esc twice or click outside) | start the paste queue: every Super+V (or Ctrl+V) pastes the next item, Esc cancels |
-| Alt+Shift+1–0 | paste slot N, the same item as from anywhere (also while searching); the 10 slotted rows show their key |
-| → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
-| Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
-| Delete (or the trash icon) | delete the item (with search text selected: delete that text). The trash icon asks first: one click turns it red with a check, a second click deletes (it resets after 3 s, when the mouse leaves it or the popup closes). Del on the keyboard deletes an unpinned item at once and arms a pinned one the same way |
-| Ctrl+Z | take back the last delete, pin or unpin (up to 10, in this session): the item goes back to its place, with its pin; with nothing to take back it edits the search |
-| Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in Settings > Phone (Flux): send the current clipboard |
-| Shift+Delete | clear history (asks first; only unpinned items are counted and deleted, pinned items stay) |
-| Ctrl+I (or the Incognito switch in the footer, or right-click the bar icon) | incognito on/off |
-| Backspace, Ctrl+Backspace, ← → | edit the search |
-| Ctrl+U | clear the search |
-| Shift+← → / Shift+Home End, Ctrl+A, mouse drag | select search text |
-| Ctrl+C / Ctrl+X (with search text selected) | copy / cut it to the clipboard (becomes a new history item) |
-| Ctrl+V | paste into the search |
-| the gear icon in the footer | open the settings window (↑ ↓ pick a section, Esc closes) |
-| Esc | clear the search, then close |
-
-## Install
+<!-- Screenshot: add preview.png to the repo, then replace this comment with: ![Nice Clipboard](preview.png) -->
 
 ```bash
 omarchy plugin add https://github.com/roehrbacher/Nice-Clipboard --enable
 ```
 
-The plugin ID is `timon.clipboard`. Enabling it switches off the stock
-`omarchy.clipboard` (it is a clone of it), so only one clipboard watcher runs.
-Alt+V and Alt+Shift+1–0 work right away: the plugin adds them to the
-running Hyprland itself (Settings > Shortcuts > System-wide shortcuts, on by
-default). No config file is edited. They are added again after every
-Hyprland config reload, only on keys that are still free (a key your config
-already uses is left alone and listed there), and removed when you switch the
-setting off or disable / remove the plugin. Optional extra keys go in
-`~/.config/hypr/bindings.lua`:
+It replaces the stock clipboard and keeps your history.
 
-```lua
-o.bind("SUPER + SHIFT + V", "Clipboard history", "omarchy-shell shell toggle timon.clipboard")  -- optional, GNOME key
-o.bind("SUPER + SHIFT + CTRL + V", "Clipboard incognito", "omarchy-shell shell call timon.clipboard toggleIncognito x")
-```
+## How you'll use it
 
-and run `omarchy restart shell`.
+**Pins from anywhere.** Pin the items you paste often. Then Alt+Shift+1 to 0 pastes them from anywhere, without opening the popup. Pins take the first keys, in pin order. The newest history items fill the rest.
+
+**Phone and incognito.** With [Flux](https://github.com/bjarneo/flux), copies move between your phone and your computer. Incognito stops new items being saved and pauses phone sync until you turn it off.
+
+**Text from a screenshot.** Copy a screenshot, then copy the text out of it. Recognition runs on your computer, not online.
+
+**Smart items.** Copy an address or GPS coordinates and one click opens them in Maps. A colour code like `#ff8800` shows its colour. Links, email addresses, phone numbers, file paths and GitHub issues like `owner/repo#12` get an open button. A QR code in a copied image is read too: open its link, or copy the Wi-Fi password.
+
+**Paste queue.** Ctrl+click a few items in order, close the popup, and Super+V or Ctrl+V pastes them one after another. Useful when filling in a form.
+
+## Also
+
+- Search supports filters such as `type:image`, `app:firefox` and `today`, and regex.
+- A formatted copy from a browser or Docs can be pasted as Markdown.
+- Colours follow your Omarchy theme.
+
+## Privacy
+
+History stays on your computer, in `~/.local/share/timon.clipboard/`.
+
+Copies from a password manager are never stored, including Bitwarden and KeePassXC, and neither are copies made with `wl-copy --sensitive`. Incognito stores nothing new and pauses Flux.
+
+Text recognition runs only on your computer.
+
+Once a day, when you open the popup, it asks GitHub whether a newer version exists. You can turn this off in Settings > General.
+
+Feedback in Settings is anonymous. Only the text you type and the plugin version are sent.
+
+## Requirements
+
+Omarchy 4, with `wl-clipboard`.
+
+Optional: `zxing-cpp` or `zbar` for QR codes, `tesseract` and language packs for text in screenshots, `python3` or `pandoc` for Paste as Markdown, and [Flux](https://github.com/bjarneo/flux) for phone sync. The rest works without them.
 
 ## Update
 
-Omarchy menu > Update (`omarchy-update`) updates Omarchy and your packages,
-not third-party plugins. A plugin installed with `omarchy plugin add` (a git
-clone) is updated with:
+Omarchy's own Update menu does not update plugins. For a git install:
 
 ```bash
 omarchy plugin update timon.clipboard && omarchy restart shell
 ```
 
-(it fetches, shows the changes and asks first; while the repository is
-private this needs GitHub access). A copied install (no `.git` folder) is
-updated by copying the new version over it. The plugin is `keepLoaded`, so
-code changes need a shell restart.
-
-**Check for updates** (Settings > General, **off by default**): when on, at
-most once a day when the popup opens, `update-check.sh` asks the public
-GitHub API for the newest release (or version tag) of
-`roehrbacher/Nice-Clipboard`: an anonymous request with a fixed user agent,
-no token, nothing about you or this computer. If it is newer than the
-installed version, a small "New update available" note at the top of the
-popup says how to update (with GitHub page and Hide). If the repository
-is private, offline or has no release, nothing is shown. Saved in
-`state.json` (`updateCheck`, last check time, newest version seen).
+It fetches, shows the changes, and asks first.
 
 ## Uninstall
 
-Settings > Uninstall has two buttons (each asks with a second click, then
-opens a terminal that shows every command and waits for Enter):
-**Uninstall plugin** (its runtime keys, history, settings and the plugin;
-Flux is resumed if incognito paused it) and **Uninstall plugin and
-languages** (also the OCR packs Nice Clipboard installed itself, recorded in
-`~/.local/share/timon.clipboard/ocr-installed`; packs that were there before
-or that something else needs stay). By hand:
+Settings > Uninstall, or:
 
 ```bash
-~/.config/omarchy/plugins/timon.clipboard/flux-pause.sh resume   # start Flux again if incognito had paused it
-omarchy plugin remove timon.clipboard      # brings back the stock omarchy.clipboard
-rm -rf ~/.local/share/timon.clipboard      # optional: deletes the saved history
+omarchy plugin remove timon.clipboard
 omarchy restart shell
 ```
 
-Remove any bindings you added yourself too (the plugin's own Alt+V and
-Alt+Shift+1–0 go away with it). Super+Ctrl+V then opens the stock manager again.
-To only switch it off and keep it installed: `omarchy plugin disable timon.clipboard`.
-
-## Tests
-
-```bash
-node tests/history.test.js     # history model: limit, pins, search, clear, key routing, count label, delete confirm, Ctrl+N, Alt+Shift slots, popup size, Flux origin, phone name, last sync, phone button state and tooltip
-QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_searchfield.qml  # search field keys, pinned Del twice (real Qt)
-QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_kinetic.qml      # wheel step, touchpad 1:1, momentum after lift-off
-bash tests/capture.test.sh     # capture: incognito, password hint, size caps, 0600/0700, import, prune
-bash tests/flux-pause.test.sh  # Flux pause/resume with a stub systemctl (never touches the real fluxd)
-bash tests/queue.test.sh       # paste queue (stub hyprctl / wl-copy / notifier), incl. quiet cancel
-bash tests/version.test.sh      # Clipboard.qml version (sent with feedback) = manifest = CHANGELOG
-bash tests/ocr-hints.test.sh    # OCR language hints from locale / LANGUAGE / locale.conf / keyboard layout (stub hyprctl)
-bash tests/ocr-install.test.sh  # OCR install script: shows the command, waits for Enter, rejects odd codes, reports how it ended (dry run, no sudo)
-bash tests/global-keys.test.sh  # plugin-added global keys: only free keys bound, taken ones reported, remove drops only ours (stub hyprctl)
-bash tests/send.test.sh         # Send via Flux: fluxd socket only, no wl-copy, history untouched (fake fluxd)
-bash tests/paste-target.test.sh # popup paste goes back to the window from before the popup, without a fixed wait (stub hyprctl / wl-copy, no keys sent)
-bash tests/slots.test.sh        # Alt+Shift slots: copy-slot / paste-slot.sh (and old paste-pinned.sh) = the popup's mapping
-bash tests/uninstall.test.sh    # uninstall.sh: shows every step, waits for Enter, only removes recorded, unneeded languages (fake HOME, stubs)
-bash tests/geometry/run-harness.sh v129 # offscreen: slot hints and keys, demo banner, settings window reopen after Super+W, feedback sent state
-bash tests/geometry/run-harness.sh v130 # offscreen: update check off / on (stub), OCR sizes, sidebar link, feedback note at 940 and 620 px
-bash tests/geometry/run-harness.sh v131 # offscreen: delete confirm, Ctrl+Z undo, General / History / OCR / Uninstall pages (add a dir to keep the PNGs)
-bash tests/geometry/run-harness.sh v132 # offscreen: popup header next to the stock PanelHero, settings pages, subtitle sizes, phone quarantine
-bash tests/geometry/run-harness.sh v1322 # offscreen: every popup close ends the clear question / armed delete; a cancelled OCR job clears its state
-bash tests/geometry/run-harness.sh v133 # offscreen: no edit button, left-click pills (pasteKeep migrates), heading after Pinned and settings History page next to the stock Display panel section
-bash tests/geometry/run-harness.sh v1331 # offscreen: typing during a feedback send is kept; a copy from another app ends an armed delete
-bash tests/geometry/run-harness.sh v1332 # offscreen: empty-state and search-field dimming next to the stock launcher; OCR no longer polls --langs while a job runs
-bash tests/geometry/run-harness.sh v1333 # offscreen: "Select, paste & close" closes and hands the paste to clipboard.sh with the window from before the popup
-bash tests/geometry/run-harness.sh v1334 # offscreen: unpin goes on top of History (clipboard untouched), Ctrl+Z for pin / unpin, Clear only empties a cleared clipboard
-bash tests/geometry/run-harness.sh v1335 # offscreen: pin / unpin / delete and their Ctrl+Z are one clean change: every frame shows the final list, the row is moved (not made again), no scroll jump
-bash tests/topbutton.test.sh    # offscreen (Qt OpenGL on Mesa software, scale 1 and 1.6): list text never shows through the floating Top button
-```
-
-All tests run offscreen with stubs; none of them touch your real clipboard,
-history, Flux or screen.
+The stock clipboard comes back. To also delete your history: `rm -rf ~/.local/share/timon.clipboard`
 
 ## Credit
 
-Built on Omarchy's stock clipboard manager (`shell/plugins/clipboard`, MIT,
-David Heinemeier Hansson). UX modelled on GNOME Clipboard History by Alex
-Saveau (MIT); no code from it is used.
+Built on Omarchy's stock clipboard manager (`shell/plugins/clipboard`, MIT, David Heinemeier Hansson). The UX is modelled on GNOME Clipboard History by Alex Saveau (MIT). No code from that project is used.
 
-See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version. Developer notes are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 

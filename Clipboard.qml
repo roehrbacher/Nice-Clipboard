@@ -384,7 +384,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.33.5"
+  readonly property string pluginVersion: "1.34.0"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -428,12 +428,14 @@ Item {
     Quickshell.execDetached(["xdg-open", String(url)])
   }
 
-  // Optional update check, OFF by default (state "updateCheck"):
-  // at most once a day, when the popup opens, update-check.sh asks the
+  // Update check, ON by default (state "updateCheck"): when the popup
+  // opens and the last check is 24 h or more ago, update-check.sh asks the
   // public GitHub API for the newest release (anonymous, nothing personal
-  // sent). Newer than pluginVersion = a small notice above the list. While
-  // the repository is private nothing is found and nothing is shown.
-  property bool updateCheck: false
+  // sent). Newer than pluginVersion = a small notice above the list.
+  // "updateCheckSet" marks a choice made in Settings; without it the check
+  // is on (also for installs from before 1.34.0, which always saved false).
+  property bool updateCheck: true
+  property bool updateCheckSet: false
   property real updateLastCheck: 0
   property string updateLatest: ""
   property bool updateGit: false
@@ -469,7 +471,7 @@ Item {
   // Clear history asks in the popup (its confirm lives there).
   function runSettingsAction(name) {
     if (name === "globalKeys") { root.globalKeys = !root.globalKeys; root.writeState(); root.applyGlobalKeys(); return }
-    if (name === "updateCheck") { root.updateCheck = !root.updateCheck; if (!root.updateCheck) root.updateLatest = ""; root.writeState(); root.maybeCheckUpdate(); return }
+    if (name === "updateCheck") { root.updateCheck = !root.updateCheck; root.updateCheckSet = true; if (!root.updateCheck) root.updateLatest = ""; root.writeState(); root.maybeCheckUpdate(); return }
     if (name === "incognito") root.setPrivate(!root.privateMode, false)
     else if (name === "clear") root.requestClearFromSettings()
   }
@@ -581,7 +583,7 @@ Item {
 
   function writeState() {
     stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction, ocrDismissed: root.ocrDismissed, ocrOff: root.ocrOff, globalKeys: root.globalKeys,
-      updateCheck: root.updateCheck, updateLastCheck: root.updateLastCheck, updateLatest: root.updateLatest, updateGit: root.updateGit, updateDismissed: root.updateDismissed }) + "\n")
+      updateCheck: root.updateCheck, updateCheckSet: root.updateCheckSet, updateLastCheck: root.updateLastCheck, updateLatest: root.updateLatest, updateGit: root.updateGit, updateDismissed: root.updateDismissed }) + "\n")
   }
 
   function loadState(raw) {
@@ -593,7 +595,8 @@ Item {
     var migrate = st.clickAction !== undefined && st.clickAction !== root.clickAction
     root.ocrDismissed = ClipboardHistory.ocrDismissedOf(st.ocrDismissed)
     root.ocrOff = ClipboardHistory.ocrDismissedOf(st.ocrOff)
-    root.updateCheck = st.updateCheck === true
+    root.updateCheckSet = st.updateCheckSet === true
+    root.updateCheck = root.updateCheckSet ? st.updateCheck === true : true
     root.updateLastCheck = Number(st.updateLastCheck) || 0
     root.updateLatest = root.updateCheck && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(String(st.updateLatest || "")) ? String(st.updateLatest) : ""
     root.updateGit = st.updateGit === true
@@ -2101,11 +2104,11 @@ Item {
 
               PanelSeparator { width: parent.width; foreground: root.foreground }
 
-              // Update check, off by default.
+              // Update check, on by default.
               Repeater {
                 model: [
                   { key: "updateCheck", label: "Check for updates", on: root.updateCheck,
-                    hint: "Once a day, asks GitHub whether a newer version exists. Nothing about you or this computer is sent.",
+                    hint: "When you open the popup, once a day, asks GitHub whether a newer version exists. Nothing about you or your computer is sent.",
                     status: !root.updateCheck ? "" : (root.updateAvailable ? "Version " + root.updateLatest + " is available (you have " + root.pluginVersion + ")."
                       : (root.updateLatest !== "" ? "Up to date (" + root.pluginVersion + ")." : "")) }
                 ]

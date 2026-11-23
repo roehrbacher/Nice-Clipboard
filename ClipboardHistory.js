@@ -631,7 +631,8 @@ function versionNewer(a, b) {
   }
   return false
 }
-// At most once a day (also after a failed or empty check).
+// Due when the last check is 24 h or more ago (also after a failed or
+// empty check), or the clock went back.
 function updateCheckDue(lastSec, nowSec) {
   var last = Number(lastSec) || 0
   return !(last > 0 && nowSec - last < 86400 && nowSec >= last)

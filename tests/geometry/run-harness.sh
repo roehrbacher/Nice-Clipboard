@@ -2,7 +2,7 @@
 # Offscreen (software) run of the real Clipboard.qml with one scenario file:
 #   v129.qml  1.29.0: Alt+Shift slots, settings window only + reopen, feedback
 #             "sent" state, dev demo banner, install launch
-#   v130.qml  1.30.0: update check off by default / on (notice in the popup),
+#   v130.qml  1.30.0: update check (on by default since 1.34.0) (notice in the popup),
 #             OCR sizes, sidebar GitHub link, feedback note at 940 and 620 px
 #   v131.qml  1.31.0: delete arm/confirm, Ctrl+Z undo, General / History /
 #             Text recognition / Uninstall pages
@@ -16,6 +16,8 @@
 #   v1334.qml 1.33.4: unpin goes on top of History (clipboard untouched),
 #             Ctrl+Z for pin/unpin, Clear only empties a cleared clipboard,
 #             Top button PNGs (tests/topbutton.test.sh)
+#   v134.qml  1.34.0: update check on by default (also for pre-1.34 state),
+#             a choice in Settings is kept; one check a day on open
 #   v1335.qml 1.33.5: pin / unpin / delete and their Ctrl+Z: every frame shows
 #             the final list, the row moves (not made again), no scroll jump
 #   v1333.qml 1.33.3: "Select, paste & close" closes and pastes into the
@@ -29,9 +31,9 @@
 # notifiers, xdg-open and the terminal launcher are stubs that only log;
 # feedback goes to a local fake Worker; temp data dir, no watchers, hard
 # timeout. Nothing is installed, removed, sent or pasted.
-#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335 [png dir]
+#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335|v134 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334|v1335|v134 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."

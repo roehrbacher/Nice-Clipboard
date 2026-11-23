@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Nice Clipboard optional update check (Settings > General >
-# "Check for updates", OFF by default). Runs at most once a day, only while
-# the setting is on. Asks the public GitHub API for the newest release (or,
+# Nice Clipboard update check (Settings > General > "Check for updates",
+# on by default). The popup runs it on open when the last check is 24 h or
+# more ago, only while the setting is on. Asks the public GitHub API for the newest release (or,
 # without releases, the highest version tag) of roehrbacher/Nice-Clipboard:
 # a plain anonymous GET, no token, no cookies, nothing about the machine or
 # the user is sent (fixed User-Agent). While the repository is private (or

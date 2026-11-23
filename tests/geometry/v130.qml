@@ -3,8 +3,8 @@ import QtQuick
 import QtQuick.Window
 import qs.Commons
 import qs.Ui
-// 1.30.0 on the real Clipboard.qml (stub helpers): update check off by
-// default, then on (stub says 99.0.0: notice in the popup, once a day only),
+// 1.30.0 on the real Clipboard.qml (stub helpers): update check (on by
+// default since 1.34.0) (stub says 99.0.0: notice in the popup, once a day only),
 // OCR pills with pacman sizes, renamed OCR section, sidebar GitHub link,
 // feedback note under Send at 940 and 620 px. PNGs to $HARNESS_PNG_DIR.
 ShellRoot {
@@ -48,7 +48,7 @@ ShellRoot {
     clip.history = h
     clip.rebuildDisplay(false)
     console.log("V130 default: updateCheck=" + clip.updateCheck + " notice=" + vis("updateNoticeText").length)
-    clip.runSettingsAction("updateCheck")
+    if (!clip.updateCheck) clip.runSettingsAction("updateCheck")
     clip.open("{}")
     clip.maybeCheckUpdate()
     t2.start()
