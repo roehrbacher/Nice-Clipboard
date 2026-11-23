@@ -328,8 +328,11 @@ function snippet(text, n) {
 // 120, whole characters, not halves of an emoji) with "…", in quotes so it
 // can never be read as an option by omarchy-notification-send, and with
 // & < > escaped because notification bodies are markup.
+// 1.28.0: 72 characters (was 120). Omarchy's toast shows 2 body lines and
+// cuts the rest with its own "…", which hid the closing quote; 72 fits 2
+// lines with the quote for normal text (measured offscreen, run-v128.sh).
 function ocrPreview(text, max) {
-  var limit = max > 1 ? max : 120
+  var limit = max > 1 ? max : 72
   var chars = Array.from(String(text || "").replace(/\s+/g, " ").trim())
   var s = chars.length > limit ? chars.slice(0, limit - 1).join("").replace(/\s+$/, "") + "…" : chars.join("")
   s = s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -581,11 +584,26 @@ function firstPinnedIndex(history) {
   var rows = displayRows(history, "", 200)
   return rows.length && rows[0].pinned === true ? rows[0].index : -1
 }
+// 1.28.0: sorted by the shown name (Arabic … Ukrainian).
 function ocrLanguageRows(installed) {
   var have = installed || []
   return OCR_LANGUAGES.map(function(l) {
     return { code: l.code, name: l.name, installed: have.indexOf(l.code) >= 0, cmd: "sudo pacman -S tesseract-data-" + l.code }
-  })
+  }).sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0 })
+}
+
+// 1.28.0: a click installs the pack in Omarchy's floating terminal
+// (omarchy-pkg-add = pacman -S --needed, signed Arch package; the sudo
+// password is typed there, the plugin never holds root). Returns the argv
+// to run detached, or [] for anything that is not a plain pack code.
+function ocrInstallArgv(code) {
+  var c = String(code || "")
+  if (!/^[a-z]{3}(_[a-z]{3,4})?$/.test(c)) return []
+  var pkg = "tesseract-data-" + c
+  var script = "if command -v omarchy-launch-floating-terminal-with-presentation >/dev/null && command -v omarchy-pkg-add >/dev/null; then "
+    + "exec omarchy-launch-floating-terminal-with-presentation 'omarchy-pkg-add " + pkg + "'; "
+    + "else exec xdg-terminal-exec -e bash -c 'sudo pacman -S --needed " + pkg + "; read -rp \"Done. Press Enter\"'; fi"
+  return ["bash", "-c", script]
 }
 
 // ---- click action (1.18.0) ------------------------------------------------
@@ -941,11 +959,34 @@ function historySlotRowIndex(rows, n) {
   return -1
 }
 
-// Key hint on a row: "Alt+N" for history rows 1..9, "Alt+Shift+N" for
-// pinned rows 1..9 (slot = display position, pinned rows come first).
+// Key hint on a row (1.26.0): "Alt+N" for history rows 1..9, "Alt+Shift+N"
+// for pinned rows 1..9. Kept for older callers; 1.28.0 uses pinHint.
 function slotHint(pinned, slot, pinnedCount) {
   if (pinned) return slot >= 1 && slot <= 9 ? "Alt+Shift+" + slot : ""
   var n = slot - (pinnedCount | 0)
+  return n >= 1 && n <= 9 ? "Alt+" + n : ""
+}
+
+// 1.28.0: Alt+1..9 = pinned item 1..9, in the popup and (with the Hyprland
+// bind) anywhere. "Pin N" is the Nth pinned entry in history order, the same
+// one `clipboard.sh copy-pinned N` (paste-pinned.sh) takes, so the number
+// does not change while you search. History rows have no number.
+function pinHistoryIndex(history, n) {
+  var values = Array.isArray(history) ? history : [], k = 0
+  if (!(n >= 1 && n <= 9)) return -1
+  for (var i = 0; i < values.length; i++) if (values[i] && values[i].pinned === true && ++k === n) return i
+  return -1
+}
+// Pin number (1-based) of history entry `index`, or 0 when it is not pinned.
+function pinNumber(history, index) {
+  var values = Array.isArray(history) ? history : []
+  if (!values[index] || values[index].pinned !== true) return 0
+  var k = 0
+  for (var i = 0; i <= index; i++) if (values[i] && values[i].pinned === true) k++
+  return k
+}
+function pinHint(history, index) {
+  var n = pinNumber(history, index)
   return n >= 1 && n <= 9 ? "Alt+" + n : ""
 }
 
@@ -1340,6 +1381,10 @@ if (typeof module !== "undefined") {
     clickActionOf: clickActionOf,
     dragPlan: dragPlan,
     searchFilterExamples: SEARCH_FILTER_EXAMPLES,
+    pinHistoryIndex: pinHistoryIndex,
+    pinNumber: pinNumber,
+    pinHint: pinHint,
+    ocrInstallArgv: ocrInstallArgv,
     ocrHintLanguage: ocrHintLanguage,
     ocrSuggestions: ocrSuggestions,
     ocrDismissedOf: ocrDismissedOf,

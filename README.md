@@ -67,10 +67,12 @@ imported once on first start. To hear about upstream changes, run
   General (incognito, click action), History (delete after, clear), Flux
   (phone, last sync, "Send current clipboard" with Ctrl+S), Text recognition
   (OCR languages), Search filters, Shortcuts, Feedback. The header then says
-  "Settings" and the search button becomes a back arrow. Next to the gear, a
-  second button (󰏌, "Settings in a window") opens the same settings in their
-  own window (about 900 × 650, two columns), tiled on the current workspace
-  like Flux; Esc closes it. Both stay for now, to compare.
+  "Settings" with the plugin version next to it, and the search button
+  becomes a back arrow. Next to the gear, a second button (󰏌, "Settings in a
+  window") opens the settings in their own window (about 900 × 650, tiled
+  like Flux): a sidebar of sections (with "Settings" and the version on top)
+  and one section at a time on the right, with its title and a short
+  description. ↑ ↓ pick a section, Esc closes. Both stay for now, to compare.
 - **Flux state on the phone button:** a phone with a check when a phone is
   connected, a crossed-out phone otherwise (paused: accent colour). Hovering the phone action
   of a row shows "Send via Flux".
@@ -113,12 +115,17 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
   **Copy text**; a QR link or e-mail gets the open button, a Wi-Fi QR code
   copies the password, any other QR code copies its text. Without the tools
   the buttons simply don't appear: `sudo pacman -S tesseract tesseract-data-eng tesseract-data-deu zbar`.
-- Missing OCR languages are suggested in Settings > Text recognition: the
-  plugin looks (read-only) at your locale, Hyprland keyboard layouts and
-  hunspell dictionaries and offers e.g. "Looks like you also use German.
-  Install OCR for it?" with a button that copies
-  `sudo pacman -S tesseract-data-deu`. It never runs sudo itself; **Not now**
-  hides a suggestion for good.
+- OCR languages (Settings > Text recognition, sorted by name): a click on one
+  installs it. Omarchy's floating terminal opens with
+  `omarchy-pkg-add tesseract-data-<code>` (`pacman -S --needed`, the signed
+  Arch package) and asks for your password there; the plugin never holds
+  root. It re-reads the installed languages every 3 s until the new one
+  shows up and then says so.
+- Missing languages are suggested: the plugin looks (read-only) at your
+  locale, Hyprland keyboard layouts and hunspell dictionaries. A small
+  banner at the top of the popup says e.g. "Based on your keyboard layout:
+  install text recognition (OCR) for German?" with **Install** and **Not
+  now**; settings show the same. Not now hides it for good (both places).
 - Search filters, combinable with normal search text: `type:image|screenshot|text|link|color|file`,
   `app:<window class>` (recorded from 1.16.0 on), `is:pinned`, `today`, `yesterday`, `<30m`, `<2h`, `<3d`.
 
@@ -160,18 +167,21 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
 
 ## Feedback
 
-Settings > Feedback opens a prefilled GitHub issue (label `feedback`) in the
-browser. A direct mode is built in but off: set `feedbackEndpoint` near the
-top of `Clipboard.qml` to the URL of the Nice Clipboard feedback Worker (a
-Cloudflare Worker that files the text as an issue in a private repo, with
-rate limits and no IP storage) and Send posts it directly and says "Sent,
-thanks!". Ctrl+Shift+Enter always uses GitHub.
+Settings > Feedback: type an idea, bug or wish and press Send (or
+Ctrl+Enter). The text is posted to the Nice Clipboard feedback Worker at
+`https://feedback.roehrbacher.com/feedback` (a Cloudflare Worker that files it
+as an issue in a private repo; rate limited, no IP stored) and the box says
+"Sent, thanks!". No browser, no GitHub account. Only the text and the plugin
+version are sent. Ctrl+Shift+Enter opens a prefilled GitHub issue in the
+browser instead. If sending fails, the text stays in the box.
 
 ## Privacy
 
 History stays on this computer in `~/.local/share/timon.clipboard/`
 (folder `0700`, files `0600`). Nothing is logged, synced or sent anywhere by
-this plugin. Password-manager copies are never stored, and incognito mode
+this plugin; the one exception is feedback: what you type in Settings >
+Feedback goes to `https://feedback.roehrbacher.com/feedback`, and only when
+you press Send. Password-manager copies are never stored, and incognito mode
 stores nothing. Phone sync only happens if you run Flux yourself, and
 incognito pauses it.
 
@@ -216,6 +226,7 @@ older names `togglePrivate` and `setPrivateMode` still work.
 | Super+Shift+V | the same (GNOME default key, optional binding) |
 | Super+Ctrl+V | the same (stock Omarchy key, routed to this plugin) |
 | **Super+Shift+Ctrl+V** | incognito on/off from anywhere (with a notification) |
+| Alt+Shift+1…9 | paste pinned item N from anywhere (Hyprland bind in the shared config, runs `paste-pinned.sh`; closes the popup first if it is open) |
 
 In the popup:
 
@@ -228,7 +239,7 @@ In the popup:
 | Alt+Enter | open (URL in browser, text in editor, image in editor) |
 | Ctrl+click / Ctrl+Space | add the row to the paste queue (numbered 1, 2, 3 …); again takes it out |
 | Ctrl+click / Ctrl+Space 2+ items, then close the popup (Enter, click, Esc twice or click outside) | start the paste queue: every Super+V (or Ctrl+V) pastes the next item, Esc cancels |
-| Alt+1…9 | paste the Nth history item (pinned items are skipped: they have Alt+Shift+1…9, which works anywhere); pastes when you let go of Alt. Rows show their key: Alt+N on history, Alt+Shift+N on pins |
+| Alt+1…9 | paste pinned item N (the same pin Alt+Shift+N pastes anywhere, also while searching); pinned rows show their key. History items have no number key |
 | → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
 | Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
 | Delete (or the trash icon) | delete the item (with search text selected: delete that text). A pinned item turns red first: press Del again within 3 s to delete it; any other key cancels |
@@ -292,6 +303,7 @@ bash tests/flux-pause.test.sh  # Flux pause/resume with a stub systemctl (never 
 bash tests/queue.test.sh       # paste queue (stub hyprctl / wl-copy / notifier), incl. quiet cancel
 bash tests/version.test.sh      # Clipboard.qml version (sent with feedback) = manifest = CHANGELOG
 bash tests/ocr-hints.test.sh    # OCR language hints from locale / LANGUAGE / locale.conf / keyboard layout (stub hyprctl)
+bash tests/geometry/run-v128.sh # 1.28.0 offscreen: OCR banner + install (stubs), Alt+N pins, version header, sidebar settings window, toast-sized OCR preview (writes PNGs)
 bash tests/geometry/run-v127.sh # 1.27.0 offscreen: OCR suggestion copy/dismiss, direct feedback to a local fake Worker (writes PNGs)
 bash tests/geometry/run-v126.sh # 1.26.0 offscreen: Alt+1 pastes the first history row, clear count, phone glyph, settings window (writes PNGs)
 bash tests/geometry/run-v125.sh # 1.25.0 offscreen: settings sections and dividers, back arrow, OCR preview notification (writes a PNG)

@@ -35,7 +35,8 @@ http.server.HTTPServer(("127.0.0.1", $port), H).serve_forever()
 PY
 timeout -s KILL 40 python3 "$tmp/worker.py" & wpid=$!
 trap 'kill $wpid 2>/dev/null; rm -rf "$tmp"' EXIT
-sed -i "s|readonly property string feedbackEndpoint: \"\"|readonly property string feedbackEndpoint: \"http://127.0.0.1:$port/feedback\"|" "$tmp/clip/Clipboard.qml"
+sed -i -E "s|readonly property string feedbackEndpoint: \"[^\"]*\"|readonly property string feedbackEndpoint: \"http://127.0.0.1:$port/feedback\"|" "$tmp/clip/Clipboard.qml"
+grep -q 'feedback.roehrbacher.com' "$tmp/clip/Clipboard.qml" && { echo "V127 ERROR live endpoint still set"; exit 1; }
 grep -q "127.0.0.1:$port" "$tmp/clip/Clipboard.qml" || echo "V127 ERROR endpoint not patched"
 cp "$here/v127.qml" "$tmp/shell.qml"; mkdir "$tmp/png"
 # Colours of the current Omarchy theme (read only), so the PNGs look real:

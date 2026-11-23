@@ -558,10 +558,11 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
 {
   const rows = H.ocrLanguageRows(["eng", "deu"])
   assert.strictEqual(rows.length, 16, "16 popular languages")
-  assert.deepStrictEqual(rows.map(r => r.code), ["eng","deu","fra","spa","ita","por","nld","pol","ces","tur","rus","ukr","chi_sim","jpn","kor","ara"], "Arch package codes")
-  assert.strictEqual(rows[1].cmd, "sudo pacman -S tesseract-data-deu", "exact pacman command")
-  assert.strictEqual(rows[12].cmd, "sudo pacman -S tesseract-data-chi_sim", "Chinese simplified = chi_sim")
-  assert.ok(rows[0].installed && rows[1].installed && !rows[2].installed, "installed ones marked")
+  assert.deepStrictEqual(rows.map(r => r.code).sort(), ["eng","deu","fra","spa","ita","por","nld","pol","ces","tur","rus","ukr","chi_sim","jpn","kor","ara"].sort(), "Arch package codes")
+  const by = c => rows.find(r => r.code === c)
+  assert.strictEqual(by("deu").cmd, "sudo pacman -S tesseract-data-deu", "exact pacman command")
+  assert.strictEqual(by("chi_sim").cmd, "sudo pacman -S tesseract-data-chi_sim", "Chinese simplified = chi_sim")
+  assert.ok(by("eng").installed && by("deu").installed && !by("fra").installed, "installed ones marked")
   const now = Date.now()
   const hist = [{ type: "text", text: "newest", at: now }, { type: "text", text: "pin top", pinned: true, at: now - 5 }, { type: "text", text: "pin 2", pinned: true, at: now - 9 }]
   assert.strictEqual(H.firstPinnedIndex(hist), 1, "top pinned row's history index")
@@ -573,10 +574,10 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
 {
   // 1.25.0: OCR notification preview
   assert.strictEqual(H.ocrPreview("  Hello\n\n  world\t!  "), "“Hello world !”", "whitespace collapsed to one line")
-  const long = H.ocrPreview("a".repeat(300))
+  const long = H.ocrPreview("a".repeat(300), 120)
   assert.strictEqual(Array.from(long).length, 120 + 2, "cut to 120 chars incl. … plus quotes")
   assert.ok(long.endsWith("…”"), "ellipsis at the end")
-  assert.strictEqual(H.ocrPreview("x".repeat(120)), "“" + "x".repeat(120) + "”", "exactly 120: no ellipsis")
+  assert.strictEqual(H.ocrPreview("x".repeat(120), 120), "“" + "x".repeat(120) + "”", "exactly 120: no ellipsis")
   assert.strictEqual(H.ocrPreview("a <b>bold</b> & c"), "“a &lt;b&gt;bold&lt;/b&gt; &amp; c”", "markup escaped")
   assert.strictEqual(H.ocrPreview("--exec"), "“--exec”", "never starts with a dash")
   assert.strictEqual(H.ocrPreview("word ".repeat(10), 12), "“word word w…”", "custom length")
@@ -654,4 +655,43 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.strictEqual(H.feedbackResultFromCurl('<html>502</html>\n0').ok, false, "non-JSON reply")
   assert.strictEqual(H.feedbackResultFromCurl('').ok, false)
   console.log("ok 1.27.0 direct feedback")
+}
+
+{
+  // 1.28.0: OCR preview fits Omarchy's 2-line toast and always ends with …”
+  const inv = "Invoice number 2026-11-0042 due on 30 November. Please transfer the amount to the account below and quote the number as reference."
+  const p = H.ocrPreview(inv)
+  assert.ok(p.startsWith("“") && p.endsWith("…”"), "truncated preview keeps the closing quote after the ellipsis: " + p)
+  assert.ok(Array.from(p).length <= 72 + 2, "default limit 72 (+ quotes)")
+  assert.ok(!/\s…/.test(p), "no space before the ellipsis")
+  assert.strictEqual(H.ocrPreview("short text"), "“short text”", "short: quotes, no ellipsis")
+  assert.ok(H.ocrPreview("a & b ".repeat(40)).endsWith("…”"), "escaping does not eat the quote")
+
+  // 1.28.0: OCR languages sorted by name; install argv only for plain codes
+  const names = H.ocrLanguageRows(["eng"]).map(r => r.name)
+  assert.deepStrictEqual(names, names.slice().sort(), "alphabetical by shown name")
+  assert.strictEqual(names[0], "Arabic"); assert.strictEqual(names[names.length - 1], "Ukrainian")
+  assert.strictEqual(H.ocrLanguageRows(["eng"]).find(r => r.code === "eng").installed, true)
+  const argv = H.ocrInstallArgv("deu")
+  assert.strictEqual(argv[0], "bash"); assert.strictEqual(argv[1], "-c")
+  assert.ok(argv[2].includes("omarchy-launch-floating-terminal-with-presentation 'omarchy-pkg-add tesseract-data-deu'"), "Omarchy floating terminal + pkg-add")
+  assert.ok(argv[2].includes("sudo pacman -S --needed tesseract-data-deu"), "fallback terminal runs pacman --needed")
+  assert.ok(H.ocrInstallArgv("chi_sim")[2].includes("tesseract-data-chi_sim"))
+  for (const bad of ["", "de", "deu; rm -rf ~", "deu'", "DEU", "../x", "deu fra"]) assert.deepStrictEqual(H.ocrInstallArgv(bad), [], "rejected: " + bad)
+
+  // 1.28.0: Alt+1..9 = pinned items in history order (same as copy-pinned)
+  const hist = [{ text: "h0" }, { text: "p1", pinned: true }, { text: "h2" }, { text: "p2", pinned: true }, { text: "p3", pinned: true }]
+  assert.strictEqual(H.pinHistoryIndex(hist, 1), 1)
+  assert.strictEqual(H.pinHistoryIndex(hist, 2), 3)
+  assert.strictEqual(H.pinHistoryIndex(hist, 3), 4)
+  assert.strictEqual(H.pinHistoryIndex(hist, 4), -1, "no 4th pin")
+  assert.strictEqual(H.pinHistoryIndex(hist, 0), -1)
+  assert.strictEqual(H.pinHistoryIndex(hist, 10), -1, "only 1..9")
+  assert.strictEqual(H.pinHint(hist, 3), "Alt+2", "pinned row shows Alt+N")
+  assert.strictEqual(H.pinHint(hist, 0), "", "history rows have no number")
+  const many = Array.from({ length: 11 }, (_, i) => ({ text: "p" + i, pinned: true }))
+  assert.strictEqual(H.pinHint(many, 8), "Alt+9"); assert.strictEqual(H.pinHint(many, 9), "", "pin 10+ has no key")
+  assert.strictEqual(H.searchKeyAction({ key: 0x31, alt: true, ctrl: false, shift: false }), "slot", "Alt+1")
+  assert.strictEqual(H.searchKeyAction({ key: 0x32, alt: true, ctrl: false, shift: true }), "slot", "Alt+Shift+2 too")
+  console.log("ok 1.28.0 OCR preview quote, sorted languages, install argv, Alt+N pins")
 }

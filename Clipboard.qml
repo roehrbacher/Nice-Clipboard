@@ -23,6 +23,9 @@ Item {
   component SettingsHeading: Column {
     property string title: ""
     property bool first: false
+    // 1.28.0: the settings window shows its own page title instead.
+    property bool hidden: false
+    visible: !hidden
     width: parent ? parent.width : 0
     topPadding: first ? Style.space(2) : Style.space(12)
     bottomPadding: Style.space(4)
@@ -147,7 +150,33 @@ Item {
   // come from the locale, keyboard layouts and dictionaries (scan.sh
   // --langs "hints"); dismissed ones are kept in state.json.
   property var ocrDismissed: []
-  readonly property var ocrSuggest: ClipboardHistory.ocrSuggestions(root.ocrInfo.hints, root.ocrInfo.installed, root.ocrDismissed)
+  readonly property var ocrSuggest: root.ocrInfo.installed.length ? ClipboardHistory.ocrSuggestions(root.ocrInfo.hints, root.ocrInfo.installed, root.ocrDismissed) : []
+  // 1.28.0: a click installs a language in Omarchy's floating terminal
+  // (omarchy-pkg-add: pacman -S --needed, signed Arch package, your sudo
+  // password typed there). The plugin never holds root. Installed languages
+  // are re-read every 3 s (up to 10 min) until the new one shows up.
+  property string ocrInstalling: ""
+  property string ocrInstallingName: ""
+  property int ocrWatchTicks: 0
+  function installOcrLanguage(lang) {
+    if (!lang || lang.installed) return
+    var argv = ClipboardHistory.ocrInstallArgv(lang.code)
+    if (!argv.length) return
+    root.ocrInstalling = lang.code
+    root.ocrInstallingName = lang.name
+    root.ocrWatchTicks = 0
+    // The popup holds the keyboard; close it so the password can be typed.
+    if (root.opened) root.close()
+    Quickshell.execDetached(argv)
+    root.notify("󰗊", "Installing " + lang.name + " (OCR)", "Type your password in the terminal. Nice Clipboard picks it up when it is done.", 5000)
+    ocrWatchTimer.restart()
+  }
+  function ocrInfoUpdated() {
+    if (root.ocrInstalling === "" || root.ocrInfo.installed.indexOf(root.ocrInstalling) < 0) return
+    ocrWatchTimer.stop()
+    root.notify("󰄬", root.ocrInstallingName + " text recognition installed", "Screenshots and images copied from now on are read in " + root.ocrInstallingName + " too.", 6000)
+    root.ocrInstalling = ""
+  }
   function dismissOcrSuggestion(code) {
     if (root.ocrDismissed.indexOf(code) >= 0) return
     root.ocrDismissed = root.ocrDismissed.concat([code])
@@ -247,6 +276,8 @@ Item {
     root.pathInfo = ({})
     root.pathSingle = false
     mapsCheckProc.running = true
+    // 1.28.0: the OCR banner needs the languages on every open (cheap).
+    if (!ocrLangProc.running) ocrLangProc.running = true
     root.opened = true
     root.infoOpen = false
     root.filterText = ""
@@ -281,6 +312,7 @@ Item {
     if (root.fluxPresent && !root.fluxPaused && !statusProc.running) statusProc.running = true
     if (!ocrLangProc.running) ocrLangProc.running = true
     root.infoIndex = 0
+    root.infoOpen = false
     if (root.opened) root.close()
     settingsWindow.visible = true
     Qt.callLater(function() { settingsKeys.forceActiveFocus() })
@@ -323,14 +355,14 @@ Item {
   // the browser; the plugin needs no token, GitHub uses the browser login.
   readonly property string feedbackRepo: "roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.27.0"
+  readonly property string pluginVersion: "1.28.0"
   property string feedbackNote: ""
-  // 1.27.0: direct feedback. When set to the feedback Worker's URL (e.g.
-  // "https://feedback.example.com/feedback"), Send posts the text there and
-  // shows "Sent, thanks!": no browser, no GitHub account. Empty = off, and
-  // Send opens the prefilled GitHub issue as before. Off until the Worker
-  // is deployed (see the nice-clipboard-feedback-worker README).
-  readonly property string feedbackEndpoint: ""
+  // Direct feedback (1.27.0, on since 1.28.0): Send posts the text to the
+  // Nice Clipboard feedback Worker, which files it as an issue in a private
+  // repo (rate limited, no IP kept), and shows "Sent, thanks!": no browser,
+  // no GitHub account. Only when Send is pressed. Empty = the prefilled
+  // GitHub issue instead; Ctrl+Shift+Enter always opens GitHub.
+  readonly property string feedbackEndpoint: "https://feedback.roehrbacher.com/feedback"
   property var feedbackPendingInput: null
   function feedbackUrl(text) {
     var t = String(text || "").trim()
@@ -980,18 +1012,20 @@ Item {
     resultList.positionViewAtIndex(root.selectedIndex, ListView.Contain)
   }
 
-  // Alt+N (1.26.0): Nth history row, pins skipped (they have Alt+Shift+N,
-  // which works anywhere). Pastes like Enter, but only
-  // once Alt is released (or after 1 s), so the paste key is not sent while
-  // Alt is still held down.
+  // Alt+N (1.28.0): pinned item N (also with Shift), the same pin the
+  // global bind pastes, whatever the search shows. Pastes at once: the
+  // helper now sends Shift+Insert through Hyprland with explicit mods
+  // (like paste-pinned.sh), so a still-held Alt no longer turns it into
+  // Alt+Shift+Insert, which pasted nothing (the 1.26/1.27 bug: the paste
+  // waited for an Alt release the popup often never saw, then fired after
+  // 1 s with Alt still down, through wtype, which merges held modifiers).
   function activateSlot(slot) {
-    var rows = []
-    for (var i = 0; i < displayModel.count; i++) rows.push({ pinned: displayModel.get(i).pinned })
-    var index = ClipboardHistory.historySlotRowIndex(rows, slot)
-    if (index < 0) return
-    root.selectAbsolute(index)
-    root.pendingPasteIndex = index
-    pasteTimer.restart()
+    var hi = ClipboardHistory.pinHistoryIndex(root.history, slot)
+    if (hi < 0) return
+    if (ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.close(); return }
+    root.dropQueue()
+    root.opened = false
+    Quickshell.execDetached([root.helper, "paste", String(hi)])
   }
 
   function firePendingPaste() {
@@ -1083,7 +1117,10 @@ Item {
     root.close()
     // 1.25.0: show what was recognised, so a bad scan is caught before
     // pasting: one line, whitespace collapsed, cut with "…", markup escaped.
-    root.notify("󰆏", r.ocrTip.replace(/^Copy/, "Copied"), ClipboardHistory.ocrPreview(r.ocrText) + "\nPaste it with Super+V.", 6000)
+    // 1.28.0: the Omarchy toast shows 2 body lines and cuts the rest with
+    // its own "…", which hid the closing quote. The preview is now short
+    // enough for 2 lines with the quote, and the Super+V hint is in the title.
+    root.notify("󰆏", r.ocrTip.replace(/^Copy/, "Copied") + " · Super+V pastes", ClipboardHistory.ocrPreview(r.ocrText), 6000)
   }
   function openIndex(index) { root.runOnIndex(index, "open") }
   // Settings: copy one language's pacman command (the user runs it).
@@ -1236,11 +1273,20 @@ Item {
       onStreamFinished: {
         var st = null
         try { st = JSON.parse(String(text)) } catch (e) { st = null }
-        if (st && Array.isArray(st.installed)) root.ocrInfo = { installed: st.installed, used: String(st.used || ""), env: String(st.env || ""), hints: Array.isArray(st.hints) ? st.hints : [] }
+        if (st && Array.isArray(st.installed)) { root.ocrInfo = { installed: st.installed, used: String(st.used || ""), env: String(st.env || ""), hints: Array.isArray(st.hints) ? st.hints : [] }; root.ocrInfoUpdated() }
       }
     }
   }
   onInfoOpenChanged: if (root.infoOpen && !ocrLangProc.running) ocrLangProc.running = true
+  Timer {
+    id: ocrWatchTimer
+    interval: 3000
+    repeat: true
+    onTriggered: {
+      if (++root.ocrWatchTicks > 200) { stop(); root.ocrInstalling = ""; return }
+      if (!ocrLangProc.running) ocrLangProc.running = true
+    }
+  }
 
   Process {
     id: clipKeyProc
@@ -1548,6 +1594,19 @@ Item {
             font.bold: true
             elide: Text.ElideRight
           }
+          // 1.28.0: plugin version next to "Settings".
+          Text {
+            id: headerVersion
+            objectName: "headerVersion"
+            visible: headerTitle.visible && root.infoOpen
+            x: headerTitle.x + headerTitle.contentWidth + Style.space(8)
+            anchors.baseline: headerTitle.baseline
+            textFormat: Text.PlainText
+            text: root.pluginVersion
+            color: root.dimText
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
 
           // Square, styled exactly like the expanded search field (same
           // fill, border and radius as searchBox), icon centred. On the
@@ -1776,6 +1835,7 @@ Item {
                 SettingsHeading {
                   title: "GENERAL"
                   first: sec.firstInColumn
+                  hidden: sec.inWindow
                 }
                 Repeater {
                   model: [
@@ -1818,7 +1878,7 @@ Item {
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
                       active: root.clickAction === modelData.key
-                      hasCursor: root.infoActions[root.infoIndex] === "click" && root.clickAction === modelData.key
+                      hasCursor: root.infoOpen && root.infoActions[root.infoIndex] === "click" && root.clickAction === modelData.key
                       onClicked: { root.infoIndex = root.infoActions.indexOf("click"); root.setClickAction(modelData.key) }
                     }
                   }
@@ -1839,6 +1899,7 @@ Item {
                   title: "HISTORY"
 
                   first: sec.firstInColumn
+                  hidden: sec.inWindow
                 }
                 Repeater {
                   model: [
@@ -1873,7 +1934,7 @@ Item {
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
                       active: root.keepDays === modelData
-                      hasCursor: root.infoActions[root.infoIndex] === "keep" && root.keepDays === modelData
+                      hasCursor: root.infoOpen && root.infoActions[root.infoIndex] === "keep" && root.keepDays === modelData
                       onClicked: { root.infoIndex = root.infoActions.indexOf("keep"); root.setKeepDays(modelData) }
                     }
                   }
@@ -1901,6 +1962,7 @@ Item {
                 SettingsHeading {
                   title: "FLUX (PHONE)"
                   first: sec.firstInColumn
+                  hidden: sec.inWindow
                 }
                 Repeater {
                   model: [
@@ -1913,7 +1975,7 @@ Item {
                 Rectangle {
                   id: sendRow
                   readonly property bool enabled: root.phoneOnline && !root.fluxPaused
-                  readonly property bool current: root.infoIndex === root.infoActions.indexOf("send")
+                  readonly property bool current: root.infoOpen && root.infoIndex === root.infoActions.indexOf("send")
                   width: parent.width
                   height: root.rowHeight
                   radius: root.cornerRadius
@@ -1970,6 +2032,7 @@ Item {
                   objectName: "clipOcrHeading"
                   title: "TEXT RECOGNITION (OCR)"
                   first: sec.firstInColumn
+                  hidden: sec.inWindow
                 }
                 Repeater {
                   model: [
@@ -2006,9 +2069,9 @@ Item {
                     Row {
                       spacing: Style.spacing.xs
                       Button {
-                        objectName: "clipOcrSuggestCopy"
-                        text: "Copy: " + modelData.cmd
-                        iconText: "󰆏"
+                        objectName: "clipOcrSuggestInstall"
+                        text: "Install " + modelData.name
+                        iconText: "󰇚"
                         fontSize: Style.font.caption
                         iconSize: Style.font.caption
                         foreground: root.foreground
@@ -2017,8 +2080,8 @@ Item {
                         verticalPadding: Style.spacing.controlPaddingY
                         bordered: true
                         active: true
-                        tooltipText: "Copies the command; paste it in a terminal (needs your password)"
-                        onClicked: root.copyOcrInstall({ name: modelData.name, cmd: modelData.cmd, installed: false })
+                        tooltipText: "Opens a terminal: " + modelData.cmd.replace("sudo pacman -S", "sudo pacman -S --needed")
+                        onClicked: root.installOcrLanguage({ code: modelData.code, name: modelData.name, installed: false })
                       }
                       Button {
                         objectName: "clipOcrSuggestDismiss"
@@ -2043,7 +2106,7 @@ Item {
                   width: parent.width
                   wrapMode: Text.WordWrap
                   textFormat: Text.PlainText
-                  text: "Click a language to copy its install command. Installing needs your sudo password, so the plugin never installs anything itself."
+                  text: "Click a language to install it: a terminal opens and asks for your password (official Arch package)."
                   color: root.dimText
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -2086,8 +2149,8 @@ Item {
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
                       active: installed
-                      tooltipText: installed ? "Installed" : "Click to copy: " + cmd
-                      onClicked: root.copyOcrInstall(modelData)
+                      tooltipText: installed ? "Installed" : (root.ocrInstalling === code ? "Installing… (see the terminal)" : "Click to install (pacman, asks for your password)")
+                      onClicked: root.installOcrLanguage(modelData)
                     }
                   }
                 }
@@ -2109,6 +2172,7 @@ Item {
                   objectName: "clipFilterHeading"
                   title: "SEARCH FILTERS"
                   first: sec.firstInColumn
+                  hidden: sec.inWindow
                 }
                 Repeater {
                   id: filterRows
@@ -2131,12 +2195,12 @@ Item {
                   title: "SHORTCUTS"
 
                   first: sec.firstInColumn
+                  hidden: sec.inWindow
                 }
                 Repeater {
                   model: [
                     { icon: "󰅍", label: "Open clipboard", value: "Alt+V · Super+Ctrl+V" },
-                    { icon: "󰐃", label: "Paste pinned item N, anywhere", value: "Alt+Shift+1…9" },
-                    { icon: "󰆏", label: "Paste history item N, in this popup", value: "Alt+1…9" },
+                    { icon: "󰐃", label: "Paste pinned item N (popup; anywhere: Alt+Shift)", value: "Alt+1…9" },
                     { icon: "󰒆", label: "Paste queue: pick rows, then paste in order", value: "Ctrl+click · Ctrl+Enter" }
                   ]
                   delegate: infoValueRow
@@ -2157,6 +2221,7 @@ Item {
                   title: "FEEDBACK"
 
                   first: sec.firstInColumn
+                  hidden: sec.inWindow
                 }
                 // Same box style as the search field.
                 BorderSurface {
@@ -2224,7 +2289,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     horizontalAlignment: Text.AlignRight
                     elide: Text.ElideLeft
-                    text: root.feedbackNote !== "" ? root.feedbackNote : (root.feedbackEndpoint !== "" ? "Ctrl+Enter · sent directly" : "Ctrl+Enter · opens a GitHub issue")
+                    text: root.feedbackNote !== "" ? root.feedbackNote : (root.feedbackEndpoint !== "" ? "Ctrl+Enter sends · Ctrl+Shift+Enter: GitHub" : "Ctrl+Enter · opens a GitHub issue")
                     color: root.dimText
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
@@ -2250,7 +2315,7 @@ Item {
               width: parent ? parent.width : 0
               height: root.rowHeight
               radius: root.cornerRadius
-              readonly property bool current: root.infoIndex === root.infoActions.indexOf(modelData.key)
+              readonly property bool current: root.infoOpen && root.infoIndex === root.infoActions.indexOf(modelData.key)
               color: current ? Style.hoverFillFor(root.foreground, root.accent) : (infoRowMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent")
 
               Text {
@@ -2417,6 +2482,76 @@ Item {
                 KineticScroll {
                   flickable: resultList
                   wheelStep: root.rowHeight * 3
+                }
+
+                // 1.28.0: first-run hint above the list: a missing OCR
+                // language matching the locale / keyboard layout. Install
+                // or Not now (Not now = the same dismissal as in settings).
+                header: Item {
+                  id: ocrBanner
+                  objectName: "ocrBanner"
+                  readonly property var sug: root.ocrSuggest.length && root.filterText === "" ? root.ocrSuggest[0] : null
+                  width: ListView.view ? ListView.view.width : 0
+                  height: sug ? bannerBox.height + Style.space(8) : 0
+                  visible: sug !== null
+                  Rectangle {
+                    id: bannerBox
+                    width: parent.width
+                    height: bannerCol.implicitHeight + Style.space(16)
+                    radius: root.cornerRadius
+                    color: Util.alpha(root.accent, 0.10)
+                    border.width: 1
+                    border.color: Util.alpha(root.accent, 0.35)
+                    Column {
+                      id: bannerCol
+                      x: Style.space(10)
+                      y: Style.space(8)
+                      width: parent.width - Style.space(20)
+                      spacing: Style.space(8)
+                      Text {
+                        objectName: "ocrBannerText"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
+                        text: ocrBanner.sug ? "󰗊  Based on " + ocrBanner.sug.source + ": install text recognition (OCR) for " + ocrBanner.sug.name + "?" : ""
+                        color: root.foreground
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.body
+                      }
+                      Row {
+                        spacing: Style.spacing.xs
+                        Button {
+                          objectName: "ocrBannerInstall"
+                          text: "Install"
+                          iconText: "󰇚"
+                          fontSize: Style.font.caption
+                          iconSize: Style.font.caption
+                          foreground: root.foreground
+                          fontFamily: root.fontFamily
+                          horizontalPadding: Style.spacing.sm
+                          verticalPadding: Style.spacing.controlPaddingY
+                          bordered: true
+                          active: true
+                          tooltipText: ocrBanner.sug ? "Opens a terminal: sudo pacman -S --needed tesseract-data-" + ocrBanner.sug.code : ""
+                          onClicked: if (ocrBanner.sug) root.installOcrLanguage({ code: ocrBanner.sug.code, name: ocrBanner.sug.name, installed: false })
+                        }
+                        Button {
+                          objectName: "ocrBannerDismiss"
+                          text: "Not now"
+                          iconText: "󰅖"
+                          fontSize: Style.font.caption
+                          iconSize: Style.font.caption
+                          foreground: root.foreground
+                          fontFamily: root.fontFamily
+                          horizontalPadding: Style.spacing.sm
+                          verticalPadding: Style.spacing.controlPaddingY
+                          bordered: true
+                          tooltipText: "Don't suggest it again (Settings > Text recognition still lists it)"
+                          onClicked: if (ocrBanner.sug) root.dismissOcrSuggestion(ocrBanner.sug.code)
+                        }
+                      }
+                    }
+                  }
                 }
 
                 section.property: "sectionName"
@@ -2671,8 +2806,8 @@ Item {
                       }
 
                       Item {
-                        readonly property string hint: ClipboardHistory.slotHint(row.pinned, row.slot, root.pinnedCount)
-                        visible: !row.showActions && !row.armed && row.queueNo === 0 && hint !== "" && root.filterText === ""
+                        readonly property string hint: row.pinned ? ClipboardHistory.pinHint(root.history, row.historyIndex) : ""
+                        visible: !row.showActions && !row.armed && row.queueNo === 0 && hint !== ""
                         width: visible ? slotHint.implicitWidth + Style.space(6) : 0
                         height: actions.height
 
@@ -3057,11 +3192,29 @@ Item {
     }
   }
 
-  // 1.26.0 try-out: settings window, about 900 x 650, two columns of the
-  // same section Components the popup page uses (left: everyday settings,
-  // shortcuts and feedback; right: OCR languages and search filters). Title "Nice Clipboard settings", class
-  // org.quickshell, like Flux's window.
+  // Settings window (1.28.0 redesign): about 900 x 650, laid out like a
+  // settings app: a sidebar of sections on the left (title + version on
+  // top), one section at a time in the content pane on the right, with its
+  // title, a one-line description and the stock divider. The sections are
+  // the same Components the popup page uses (their own small headings are
+  // hidden here). ↑ ↓ / Tab pick a section, PgUp/PgDn scroll, Esc closes.
+  // Tiles like Flux's window (xdg toplevel, class org.quickshell).
   readonly property var settingsWindowRef: settingsWindow
+  property int settingsSection: 0
+  readonly property var settingsSections: [
+    { key: "general", icon: "󰒓", label: "General", desc: "Incognito and what a click on an item does.", comp: secGeneral },
+    { key: "history", icon: "󰋚", label: "History", desc: "How long items are kept, and clearing the history. Pinned items always stay.", comp: secHistory },
+    { key: "flux", icon: "󰄜", label: "Flux (phone)", desc: "Clipboard sync with your phone through Flux.", comp: secFlux },
+    { key: "ocr", icon: "󰗊", label: "Text recognition", desc: "Languages used to read text in screenshots and images. Click one to install it.", comp: secOcr },
+    { key: "filters", icon: "󰍉", label: "Search filters", desc: "Type these in the search field; combine them with text, e.g. type:link github.", comp: secFilters },
+    { key: "shortcuts", icon: "󰌌", label: "Shortcuts", desc: "Keys in the popup and everywhere.", comp: secShortcuts },
+    { key: "feedback", icon: "󰆈", label: "Feedback", desc: "Ideas, bugs and wishes go straight to the developer.", comp: secFeedback }
+  ]
+  function showSettingsSection(i) {
+    var n = root.settingsSections.length
+    root.settingsSection = ((i % n) + n) % n
+    settingsPaneFlick.contentY = 0
+  }
   FloatingWindow {
     id: settingsWindow
     objectName: "settingsWindow"
@@ -3077,78 +3230,204 @@ Item {
       anchors.fill: parent
       focus: true
       Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) { settingsWindow.visible = false; event.accepted = true }
-        else { root.handleInfoKey(event); event.accepted = true }
+        var k = event.key
+        if (k === Qt.Key_Escape) settingsWindow.visible = false
+        else if (k === Qt.Key_Down || k === Qt.Key_Tab) root.showSettingsSection(root.settingsSection + 1)
+        else if (k === Qt.Key_Up || k === Qt.Key_Backtab) root.showSettingsSection(root.settingsSection - 1)
+        else if (k === Qt.Key_PageDown) settingsPaneFlick.contentY = Math.min(Math.max(0, settingsPaneFlick.contentHeight - settingsPaneFlick.height), settingsPaneFlick.contentY + settingsPaneFlick.height * 0.85)
+        else if (k === Qt.Key_PageUp) settingsPaneFlick.contentY = Math.max(0, settingsPaneFlick.contentY - settingsPaneFlick.height * 0.85)
+        else if ((event.modifiers & Qt.ControlModifier) && k === Qt.Key_S) root.sendCurrentClipboard()
+        else return
+        event.accepted = true
       }
 
-      Text {
-        id: settingsWindowTitle
-        x: Style.spacing.panelPadding
-        y: Style.spacing.panelPadding
-        textFormat: Text.PlainText
-        text: "Nice Clipboard settings"
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.title
-        font.bold: true
-      }
+      // ---- sidebar ----
+      Rectangle {
+        id: settingsSidebar
+        objectName: "settingsSidebar"
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: Style.space(230)
+        color: Util.alpha(root.foreground, 0.04)
 
-      Flickable {
-        id: settingsWindowFlick
-        objectName: "settingsWindowFlick"
-        anchors.fill: parent
-        anchors.topMargin: settingsWindowTitle.y + settingsWindowTitle.height + Style.spacing.panelGap
-        anchors.leftMargin: Style.spacing.panelPadding
-        anchors.rightMargin: Style.spacing.panelPadding
-        anchors.bottomMargin: Style.spacing.panelPadding
-        clip: true
-        contentWidth: width
-        contentHeight: Math.max(settingsLeft.implicitHeight, settingsRight.implicitHeight)
-        boundsBehavior: Flickable.StopAtBounds
-
-        KineticScroll {
-          flickable: settingsWindowFlick
-          wheelStep: root.rowHeight * 3
+        Column {
+          id: sidebarHead
+          x: Style.spacing.panelPadding
+          y: Style.spacing.panelPadding
+          width: parent.width - 2 * Style.spacing.panelPadding
+          spacing: Style.space(2)
+          Row {
+            spacing: Style.space(8)
+            Text {
+              objectName: "settingsWindowTitle"
+              textFormat: Text.PlainText
+              text: "Settings"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+            Text {
+              objectName: "settingsWindowVersion"
+              anchors.baseline: parent.children[0].baseline
+              textFormat: Text.PlainText
+              text: root.pluginVersion
+              color: root.dimText
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+          Text {
+            textFormat: Text.PlainText
+            text: "Nice Clipboard"
+            color: root.dimText
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
         }
 
-        Row {
-          id: settingsWindowRow
-          width: settingsWindowFlick.width
-          spacing: Style.space(28)
-          readonly property real columnWidth: (width - spacing) / 2
-
-          Column {
-            id: settingsLeft
-            objectName: "settingsLeft"
-            width: settingsWindowRow.columnWidth
-            spacing: Style.space(2)
-            Repeater {
-              model: [secGeneral, secHistory, secFlux, secShortcuts, secFeedback]
-              Loader {
-                required property var modelData
-                required property int index
-                width: settingsLeft.width
-                sourceComponent: modelData
-                onLoaded: { item.firstInColumn = index === 0; item.inWindow = true }
+        Column {
+          id: sidebarNav
+          objectName: "settingsNav"
+          anchors.top: sidebarHead.bottom
+          anchors.topMargin: Style.space(18)
+          x: Style.space(8)
+          width: parent.width - Style.space(16)
+          spacing: Style.space(2)
+          Repeater {
+            model: root.settingsSections
+            Rectangle {
+              required property var modelData
+              required property int index
+              objectName: "settingsNavItem"
+              readonly property bool current: root.settingsSection === index
+              width: sidebarNav.width
+              height: root.rowHeight
+              radius: root.cornerRadius
+              color: current ? root.selectedBackground : (navMouse.containsMouse ? Util.alpha(root.foreground, 0.06) : "transparent")
+              Rectangle {
+                visible: parent.current
+                width: Style.space(3)
+                height: parent.height - Style.space(14)
+                radius: width / 2
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                color: root.accent
+              }
+              Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(12)
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: modelData.icon + "   " + modelData.label
+                color: parent.current ? root.foreground : Util.alpha(root.foreground, 0.8)
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                font.bold: parent.current
+                elide: Text.ElideRight
+              }
+              MouseArea {
+                id: navMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { root.showSettingsSection(index); settingsKeys.forceActiveFocus() }
               }
             }
           }
+        }
 
-          Column {
-            id: settingsRight
-            objectName: "settingsRight"
-            width: settingsWindowRow.columnWidth
-            spacing: Style.space(2)
-            Repeater {
-              model: [secOcr, secFilters]
-              Loader {
-                required property var modelData
-                required property int index
-                width: settingsRight.width
-                sourceComponent: modelData
-                onLoaded: { item.firstInColumn = index === 0; item.inWindow = true }
-              }
-            }
+        Text {
+          anchors.left: parent.left
+          anchors.leftMargin: Style.spacing.panelPadding
+          anchors.right: parent.right
+          anchors.rightMargin: Style.spacing.panelPadding
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.spacing.panelPadding
+          wrapMode: Text.WordWrap
+          textFormat: Text.PlainText
+          text: "↑ ↓ sections · Esc closes"
+          color: root.dimText
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+      }
+      Rectangle {
+        anchors.left: settingsSidebar.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 1
+        color: Util.alpha(root.foreground, 0.12)
+      }
+
+      // ---- content pane ----
+      Item {
+        id: settingsPane
+        objectName: "settingsPane"
+        anchors.left: settingsSidebar.right
+        anchors.leftMargin: Style.space(32)
+        anchors.right: parent.right
+        anchors.rightMargin: Style.space(32)
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        readonly property var section: root.settingsSections[root.settingsSection]
+
+        Column {
+          id: paneHead
+          y: Style.spacing.panelPadding
+          width: parent.width
+          spacing: Style.space(6)
+          Text {
+            objectName: "settingsPaneTitle"
+            textFormat: Text.PlainText
+            text: settingsPane.section.label
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+          }
+          Text {
+            objectName: "settingsPaneDesc"
+            width: parent.width
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: settingsPane.section.desc
+            color: root.dimText
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+          Item { width: 1; height: Style.space(6) }
+          PanelSeparator { width: parent.width; foreground: root.foreground }
+        }
+
+        Flickable {
+          id: settingsPaneFlick
+          objectName: "settingsWindowFlick"
+          anchors.top: paneHead.bottom
+          anchors.topMargin: Style.space(12)
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.spacing.panelPadding
+          clip: true
+          contentWidth: width
+          contentHeight: settingsPaneLoader.height
+          boundsBehavior: Flickable.StopAtBounds
+
+          KineticScroll {
+            flickable: settingsPaneFlick
+            wheelStep: root.rowHeight * 3
+          }
+
+          Loader {
+            id: settingsPaneLoader
+            objectName: "settingsPaneLoader"
+            width: settingsPaneFlick.width
+            sourceComponent: settingsPane.section.comp
+            onLoaded: { item.firstInColumn = true; item.inWindow = true }
           }
         }
       }

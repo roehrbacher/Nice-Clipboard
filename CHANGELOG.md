@@ -2,6 +2,17 @@
 
 Newest first. Older history is in the git log.
 
+## 1.28.0
+
+- Feedback is sent directly: `feedbackEndpoint` is now the live Worker (`https://feedback.roehrbacher.com/feedback`), so Send posts the text (only when pressed) and shows "Sent, thanks!"; no browser or GitHub account. Ctrl+Shift+Enter still opens the prefilled GitHub issue. Test harnesses point it at a local fake Worker or a closed port, never the live one.
+- Alt+1…9 in the popup pastes **pinned** item 1…9 (the same pin the global Alt+Shift+N pastes, also while searching); pinned rows show "Alt+N", history rows have no number. Pastes at once.
+- Fix: Alt+number in the popup pasted nothing. The paste waited for an Alt release the popup often never saw (Alt held since Alt+V), fired after 1 s with Alt still down, and wtype's Shift+Insert merged with the held Alt into Alt+Shift+Insert. `clipboard.sh` now sends Shift+Insert through Hyprland with explicit mods (like `paste-pinned.sh`), wtype only as fallback.
+- `paste-pinned.sh` closes the popup first when it is open (the paste used to land in its search field).
+- OCR languages are sorted by name, and a click installs one: Omarchy's floating terminal runs `omarchy-pkg-add tesseract-data-<code>` (pacman `--needed`, signed package, password typed there). The plugin re-reads installed languages every 3 s (up to 10 min) and says when it is ready.
+- First-run hint: a banner at the top of the popup suggests a missing OCR language from your locale / keyboard layout ("Based on your keyboard layout: install text recognition (OCR) for German?") with Install and Not now (same dismissal as settings).
+- Settings window redesigned for its size: a sidebar of sections (Settings + version on top) and one section per page with title and description; ↑ ↓ switch sections. The popup settings page is unchanged except for the version next to "Settings".
+- OCR copy notification: the preview is 72 characters (was 120) so Omarchy's 2-line toast shows it whole, ending with …”; "Super+V pastes" moved into the title.
+
 ## 1.27.0
 
 - Text recognition suggests missing OCR languages: when your locale (LANG, LANGUAGE, LC_*, locale.conf), a Hyprland keyboard layout (`hyprctl getoption input:kb_layout`) or a hunspell dictionary points to a language without a tesseract pack, settings say e.g. "Looks like you also use German (your language settings). Install OCR for it?" with a **Copy: sudo pacman -S tesseract-data-deu** button and **Not now** (remembered in state.json as `ocrDismissed`). The plugin never runs sudo. Detection is read-only (`scan.sh --langs` now also prints `hints`); the mapping is tested in `tests/history.test.js` and `tests/ocr-hints.test.sh`.

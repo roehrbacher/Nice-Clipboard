@@ -47,6 +47,23 @@ copy_entry() {
   esac
 }
 
+# 1.28.0: Shift+Insert through Hyprland with explicit mods (as paste-pinned.sh
+# does), so keys still held from the shortcut (Alt of Alt+1) do not merge in:
+# wtype's virtual keyboard shares the modifier state, and Alt+Shift+Insert
+# pastes nothing. wtype stays the fallback when hyprctl is missing or fails.
+# CLIPBOARD_PASTE_DRY=1 prints the dispatches instead (tests).
+send_paste() {
+  local d='hl.dsp.send_key_state({ mods = "SHIFT", key = "Insert", state = "%s" })'
+  if [[ ${CLIPBOARD_PASTE_DRY:-0} == 1 ]]; then printf "dispatch $d\n" down up; return 0; fi
+  # shellcheck disable=SC2059
+  if command -v hyprctl >/dev/null && [[ $(timeout 3 hyprctl dispatch "$(printf "$d" down)" 2>/dev/null) == ok ]]; then
+    sleep 0.05
+    timeout 3 hyprctl dispatch "$(printf "$d" up)" >/dev/null 2>&1 || timeout 3 hyprctl dispatch "$(printf "$d" up)" >/dev/null 2>&1
+    return 0
+  fi
+  wtype -M shift -k Insert -m shift 2>/dev/null || true
+}
+
 case "${1:-}" in
 init)
   mkdir -p "$IMAGE_DIR"
@@ -67,7 +84,7 @@ paste | copy)
   copy_entry "$2" || exit 1
   [[ $1 == copy ]] && exit 0
   sleep 0.15
-  wtype -M shift -k Insert -m shift 2>/dev/null || true
+  send_paste
   ;;
 current)
   # 1.20.0: "empty" when nothing is on the clipboard at all (the popup then
@@ -105,7 +122,7 @@ markdown | paste-md)
   printf '%s' "$md" | sha256sum | awk '{print $1}' >"$DATA_DIR/skip-next"
   printf '%s' "$md" | wl-copy || exit 1
   sleep 0.15
-  wtype -M shift -k Insert -m shift 2>/dev/null || true
+  send_paste
   # The target app reads the paste on its own time; give it a second, then
   # restore only if the clipboard still holds our Markdown.
   sleep 1

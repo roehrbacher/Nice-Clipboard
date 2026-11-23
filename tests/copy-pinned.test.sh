@@ -17,4 +17,13 @@ check 3 0 b
 check 4 1 ""
 check 0 1 ""
 check x 1 ""
+# 1.28.0: the popup's Alt+N picks the same pin as copy-pinned N.
+want=$(node -e 'const H=require(process.argv[1]); const h=JSON.parse(require("fs").readFileSync(process.argv[2])); console.log([1,2,3,4].map(n=>H.pinHistoryIndex(h,n)).join(","))' "$(cd "$(dirname "$0")/.." && pwd)/ClipboardHistory.js" "$T/data/timon.clipboard/history.json")
+if [[ $want == "0,2,3,-1" ]]; then echo "ok   pinHistoryIndex = copy-pinned order"; else echo "FAIL pinHistoryIndex $want"; fail=1; fi
+# 1.28.0: paste sends Shift+Insert through Hyprland with explicit mods.
+out=$(PATH="$T/bin:$PATH" XDG_DATA_HOME="$T/data" CLIPBOARD_PASTE_DRY=1 bash "$(dirname "$0")/../clipboard.sh" paste 1)
+if [[ $out == *'mods = "SHIFT", key = "Insert", state = "down"'*'state = "up"'* ]]; then echo "ok   paste uses send_key_state SHIFT+Insert"; else echo "FAIL paste dispatch: $out"; fail=1; fi
+# paste-pinned closes the popup before pasting.
+out=$(PATH="$T/bin:$PATH" XDG_DATA_HOME="$T/data" PASTE_PINNED_DRY=1 bash "$(dirname "$0")/../paste-pinned.sh" 2)
+if [[ $out == "hide popup"*'state = "down"'* && $(cat "$T/copied") == a ]]; then echo "ok   paste-pinned hides the popup, then pastes pin 2"; else echo "FAIL paste-pinned: $out"; fail=1; fi
 exit $fail

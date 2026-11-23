@@ -1,5 +1,6 @@
 #!/bin/bash
-# Global Alt+Shift+N (hypr/shared-bindings.lua): paste the Nth pinned entry.
+# Global Alt+Shift+N (hypr/shared-bindings.lua; Alt+N once that bind moves):
+# paste the Nth pinned entry.
 # Started detached by the bind, so Hyprland never waits on it: wl-copy needs
 # the compositor to answer, and a compositor blocked on its child deadlocks.
 # Copies the entry (nothing happens if there is no Nth pin), then sends
@@ -14,6 +15,9 @@ n=${1:-}
 [[ $n =~ ^[1-9]$ ]] || exit 1
 dir=$(dirname "$(readlink -f "$0")")
 timeout -s KILL 5 "$dir/clipboard.sh" copy-pinned "$n" || exit 1
+# 1.28.0: when the popup is open it has the keyboard, so the paste would
+# land in its search field: close it first (no-op when it is closed).
+if [[ ${PASTE_PINNED_DRY:-0} == 1 ]]; then echo "hide popup"; else timeout 2 omarchy-shell -q shell hide timon.clipboard >/dev/null 2>&1 || true; fi
 send() {
   local d="hl.dsp.send_key_state({ mods = \"SHIFT\", key = \"Insert\", state = \"$1\" })"
   if [[ ${PASTE_PINNED_DRY:-0} == 1 ]]; then echo "dispatch $d"; else timeout 3 hyprctl dispatch "$d" >/dev/null; fi
