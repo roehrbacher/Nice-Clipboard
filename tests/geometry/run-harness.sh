@@ -9,6 +9,8 @@
 #   v133.qml  1.33.0: no edit button, 1.31 left-click pills (pasteKeep
 #             migrates), popup heading after Pinned and settings History
 #             page next to the stock Display panel section
+#   v1331.qml 1.33.1: typing during a slow feedback send is kept; a copy
+#             from another app ends an armed delete
 #   v1322.qml 1.32.2: every popup close ends the clear question / armed
 #             delete; a cancelled OCR job clears its state
 #   v132.qml  1.32.0: popup header next to the stock PanelHero, no edit
@@ -18,9 +20,9 @@
 # notifiers, xdg-open and the terminal launcher are stubs that only log;
 # feedback goes to a local fake Worker; temp data dir, no watchers, hard
 # timeout. Nothing is installed, removed, sent or pasted.
-#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133 [png dir]
+#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."
@@ -59,11 +61,12 @@ printf '  function displayModelCount() { return displayModel.count }\n  function
 # Never the live feedback Worker: a local fake one answers {"ok":true}.
 port=$((20000 + RANDOM % 20000))
 cat > "$tmp/worker.py" <<PY
-import http.server
+import http.server, time
 class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("content-length", "0")); b = self.rfile.read(n)
         open("$tmp/posted", "ab").write(b + b"\n")
+        if b"slow" in b: time.sleep(2)  # v1331: a send that takes a while
         self.send_response(201); self.send_header("content-type", "application/json"); self.end_headers()
         self.wfile.write(b'{"ok":true}')
     def log_message(self, *a): pass

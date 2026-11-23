@@ -75,6 +75,9 @@ Item {
   readonly property string focusedAction: root.actionFocus >= 0 && root.actionFocus < selectedActions.length ? selectedActions[root.actionFocus] : ""
   // Pinned entry (history index) armed by a first Del (-1 = none).
   property int armedDeleteIndex: -1
+  // Any change to the history (a copy from another app, Ctrl+Z, auto-delete)
+  // can move entries, so the index would point at another row: disarm.
+  onHistoryChanged: root.disarmDelete()
   // Flux: a paired phone is online (checked when the popup opens).
   property bool phoneOnline: false
   // Texts captured a moment ago, waiting for the Flux "from phone" check.
@@ -370,7 +373,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.33.0"
+  readonly property string pluginVersion: "1.33.1"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -381,13 +384,17 @@ Item {
   // when Send (or Enter) is pressed.
   readonly property string feedbackEndpoint: "https://feedback.roehrbacher.com/feedback"
   property var feedbackPendingInput: null
+  // The field's text when Send was pressed: after a confirmed send only
+  // that is removed, so words typed while it was on its way stay.
+  property string feedbackPendingText: ""
   // input: the feedback field in the settings window.
   function sendFeedback(input) {
+    if (feedbackProc.running) return false
     var t = input ? input.text.trim() : ""
     if (t === "") { root.feedbackNote = "Write something first"; root.feedbackSent = false; return false }
-    if (feedbackProc.running) return false
     feedbackProc.payload = ClipboardHistory.feedbackPayload(t, root.pluginVersion)
     root.feedbackPendingInput = input
+    root.feedbackPendingText = input.text
     root.feedbackNote = "Sending…"
     root.feedbackSent = false
     feedbackProc.running = true
@@ -1522,8 +1529,10 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         var r = ClipboardHistory.feedbackResultFromCurl(text)
-        if (r.ok && root.feedbackPendingInput) root.feedbackPendingInput.text = ""
+        if (r.ok && root.feedbackPendingInput)
+          root.feedbackPendingInput.text = ClipboardHistory.feedbackLeftAfterSend(root.feedbackPendingInput.text, root.feedbackPendingText)
         root.feedbackPendingInput = null
+        root.feedbackPendingText = ""
         root.feedbackNote = r.note
         root.feedbackSent = r.ok
       }
@@ -1969,8 +1978,6 @@ Item {
 
               PanelSeparator { width: parent.width; foreground: root.foreground }
 
-              // Left click: the value row and the two stock pills, like the
-              // Display panel's SCALE row.
               Column {
                 width: parent.width
                 spacing: Style.spacing.xs
@@ -2583,7 +2590,8 @@ Item {
                     selectedTextColor: root.selectedText
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.body
-                    onTextChanged: if (text !== "") { root.feedbackNote = ""; root.feedbackSent = false }
+                    // Typing hides the last result, but not "Sending…".
+                    onTextChanged: if (text !== "" && !feedbackProc.running) { root.feedbackNote = ""; root.feedbackSent = false }
                     // Enter sends, Shift+Enter is a new line, Esc
                     // leaves the field; other keys type.
                     Keys.onPressed: function(event) {

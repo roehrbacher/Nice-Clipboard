@@ -1426,6 +1426,15 @@ function feedbackResult(exitCode, body) {
   if (exitCode === 6 || exitCode === 7 || exitCode === 28) return { ok: false, note: "Not sent: offline? Text kept" }
   return { ok: false, note: "Not sent: please try again later. Your text is kept." }
 }
+// After a confirmed send: what stays in the field. `sent` is the field's
+// text when Send was pressed; words added after it stay, and a field edited
+// anywhere else is kept whole (never lose typing).
+function feedbackLeftAfterSend(now, sent) {
+  var n = String(now || ""), s = String(sent || "")
+  if (n === s) return ""
+  if (s !== "" && n.indexOf(s) === 0) return n.substring(s.length).replace(/^\s+/, "")
+  return n
+}
 // feedback curl runs with -w '\n%{exitcode}': the last line is curl's exit
 // code, the rest is the Worker's JSON reply.
 function feedbackResultFromCurl(out) {
@@ -1586,6 +1595,7 @@ if (typeof module !== "undefined") {
     feedbackPayload: feedbackPayload,
     feedbackKey: feedbackKey,
     feedbackResult: feedbackResult,
-    feedbackResultFromCurl: feedbackResultFromCurl
+    feedbackResultFromCurl: feedbackResultFromCurl,
+    feedbackLeftAfterSend: feedbackLeftAfterSend
   }
 }

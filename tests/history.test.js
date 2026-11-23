@@ -792,3 +792,14 @@ console.log("filters/ocr: ok")}
   assert.strictEqual(H.ocrJobEnded("", "fra", "", 0), null)
   console.log("1.32.2: ok")
 }
+
+// 1.33.1: typing in the feedback box while a send is on its way. After the
+// Worker confirmed, only the text that was sent leaves the field.
+{
+  assert.strictEqual(H.feedbackLeftAfterSend("hello", "hello"), "", "nothing typed meanwhile: field empties")
+  assert.strictEqual(H.feedbackLeftAfterSend("hello and a second thought", "hello"), "and a second thought", "words typed after Send stay")
+  assert.strictEqual(H.feedbackLeftAfterSend("hello\nmore", "hello"), "more")
+  assert.strictEqual(H.feedbackLeftAfterSend("hi hello", "hello"), "hi hello", "edited elsewhere: kept whole")
+  assert.strictEqual(H.feedbackLeftAfterSend("", "hello"), "", "cleared meanwhile: stays empty")
+  console.log("1.33.1: ok")
+}

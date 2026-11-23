@@ -371,6 +371,7 @@ bash tests/geometry/run-harness.sh v131 # offscreen: delete confirm, Ctrl+Z undo
 bash tests/geometry/run-harness.sh v132 # offscreen: popup header next to the stock PanelHero, settings pages, subtitle sizes, phone quarantine
 bash tests/geometry/run-harness.sh v1322 # offscreen: every popup close ends the clear question / armed delete; a cancelled OCR job clears its state
 bash tests/geometry/run-harness.sh v133 # offscreen: no edit button, left-click pills (pasteKeep migrates), heading after Pinned and settings History page next to the stock Display panel section
+bash tests/geometry/run-harness.sh v1331 # offscreen: typing during a feedback send is kept; a copy from another app ends an armed delete
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,

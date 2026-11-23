@@ -2,6 +2,13 @@
 
 Newest first. Older history is in the git log.
 
+## 1.33.1
+
+Pre-release audit fixes.
+
+- Fix: text typed into the feedback box while a send was still on its way was deleted when the Worker confirmed, and the "Sending…" note disappeared on the first key. Now only the text that was sent leaves the box, and "Sending…" stays until the answer.
+- Fix: a copy from another app (or Ctrl+Z) during the 3 seconds a pinned item was armed for delete moved the red "click again" state to another row. Any change to the history now ends the armed state; the next Del arms again.
+
 ## 1.33.0
 
 - Removed: editing items. The pencil button and edit mode are gone.
