@@ -5,7 +5,7 @@ import QtQuick.Window
 import qs.Commons
 import qs.Ui
 // 1.32.2 on the real Clipboard.qml (stub helpers): every way the popup
-// closes ends edit mode, the clear-history question and an armed delete;
+// closes ends the clear-history question and an armed delete;
 // a cancelled or failed OCR install / removal in the terminal clears its
 // "Installing…" / "Removing…" state within 3 s of ocr-install.sh exiting.
 ShellRoot {
@@ -25,7 +25,7 @@ ShellRoot {
     clip.history = [{ type: "text", text: "pin one", pinned: true, at: now - 10 }, { type: "text", text: "alpha", at: now - 1000 }, { type: "text", text: "beta", at: now - 2000 }]
     clip.rebuildDisplay(false)
   }
-  function modes() { return "editing=" + (clip.editOrig !== "") + " fields=" + vis("clipEditField").length + " clearConfirm=" + clip.clearConfirmOpen + " armedDelete=" + (clip.armedDeleteIndex !== -1) }
+  function modes() { return "clearConfirm=" + clip.clearConfirmOpen + " armedDelete=" + (clip.armedDeleteIndex !== -1) }
   readonly property string doneDir: Quickshell.env("XDG_DATA_HOME") + "/timon.clipboard/"
 
   Window { id: win; width: 462; height: 700; visible: true; color: "black" }
@@ -47,19 +47,17 @@ ShellRoot {
   Timer { id: t6; interval: 3500; onTriggered: shell.step6() }
   Timer { id: tEnd; interval: 500; onTriggered: { console.log("V1322 done"); Qt.quit() } }
 
-  // Edit, then pick another row with the mouse (paste closes the popup).
+  // Pick a row with the mouse (paste closes the popup).
   function step1() {
     seed()
     clip.clickAction = "paste"
-    clip.runRowAction("edit", rowIndexOf("alpha"), true)
-    console.log("V1322 edit started: " + modes())
     clip.clickIndex(rowIndexOf("beta"))
     clip.open("{}")
     t2.start()
   }
   // The clear-history question, then Alt+Shift+1 inside the popup.
   function step2() {
-    console.log("V1322 reopen after pick while editing: " + modes())
+    console.log("V1322 reopen after a pick: " + modes())
     clip.requestClearHistory()
     console.log("V1322 clear question open: " + modes())
     clip.activateSlot(1)

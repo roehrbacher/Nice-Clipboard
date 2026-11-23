@@ -6,24 +6,27 @@
 #             OCR sizes, sidebar GitHub link, feedback note at 940 and 620 px
 #   v131.qml  1.31.0: delete arm/confirm, Ctrl+Z undo, General / History /
 #             Text recognition / Uninstall pages
-#   v1322.qml 1.32.2: every popup close ends edit / clear question / armed
+#   v133.qml  1.33.0: no edit button, 1.31 left-click pills (pasteKeep
+#             migrates), popup heading after Pinned and settings History
+#             page next to the stock Display panel section
+#   v1322.qml 1.32.2: every popup close ends the clear question / armed
 #             delete; a cancelled OCR job clears its state
-#   v132.qml  1.32.0: popup header next to the stock PanelHero, edit mode,
-#             "paste and keep open", General / History / Phone / Shortcuts,
+#   v132.qml  1.32.0: popup header next to the stock PanelHero, no edit
+#             button, left-click pills, General / History / Phone / Shortcuts,
 #             subtitle sizes, phone quarantine after incognito
 # clipboard.sh, queue.sh, global-keys.sh, update-check.sh, wl-copy, the
 # notifiers, xdg-open and the terminal launcher are stubs that only log;
 # feedback goes to a local fake Worker; temp data dir, no watchers, hard
 # timeout. Nothing is installed, removed, sent or pasted.
-#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322 [png dir]
+#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."
 tmp=$(mktemp -d)
 ln -s /usr/share/omarchy/shell/Commons "$tmp/Commons"; ln -s /usr/share/omarchy/shell/Ui "$tmp/Ui"
-mkdir "$tmp/clip" "$tmp/data" "$tmp/bin" "$tmp/png"; cp "$src"/*.qml "$src"/*.js "$src"/*.sh "$src"/*.awk "$tmp/clip/"; cp "$here/PanelStub.qml" "$tmp/clip/"
+mkdir -p "$tmp/clip" "$tmp/data/timon.clipboard" "$tmp/bin" "$tmp/png"; cp "$src"/*.qml "$src"/*.js "$src"/*.sh "$src"/*.awk "$tmp/clip/"; cp "$here/PanelStub.qml" "$tmp/clip/"
 # Never touch the live Hyprland binds: global-keys.sh is a stub that logs.
 printf '#!/bin/bash\necho "$1" >> "%s/globalkeys"\n[[ $1 == apply ]] && printf "Alt+V\\ttaken\\tClipboard history\\nAlt+Shift+1\\ttaken\\tPaste pinned clipboard item 1\\nAlt+Shift+0\\tbound\\t\\n"\nexit 0\n' "$tmp" > "$tmp/clip/global-keys.sh"; chmod +x "$tmp/clip/global-keys.sh"
 export NICE_CLIPBOARD_NO_GLOBAL_KEYS=1

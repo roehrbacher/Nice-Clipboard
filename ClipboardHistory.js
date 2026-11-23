@@ -717,50 +717,10 @@ function toggleOcrOff(off, code, installed) {
 }
 
 // ---- click action ------------------------------------------------
-// "paste": paste and close (default). "copy": put it on the clipboard,
-// popup stays open. "pasteKeep": paste into the window you were in, then
-// the popup comes back. Anything unknown is "paste".
-function clickActionOf(v) { return v === "copy" || v === "pasteKeep" ? v : "paste" }
-var CLICK_OPTIONS = [
-  { key: "copy", label: "Copy only", explain: "Puts the item on the clipboard and leaves the popup open. Paste it yourself with Ctrl+V." },
-  { key: "paste", label: "Copy, paste and close", explain: "Pastes the item into the window you were in and closes the popup." },
-  { key: "pasteKeep", label: "Copy, paste and keep open", explain: "Pastes the item into the window you were in, then the popup opens again for the next one." }
-]
-function clickExplain(key) {
-  var k = clickActionOf(key)
-  for (var i = 0; i < CLICK_OPTIONS.length; i++) if (CLICK_OPTIONS[i].key === k) return CLICK_OPTIONS[i].explain
-  return ""
-}
-
-// Edit a text item in place. It keeps its pin, its place and its
-// time; the browser HTML that came with it is dropped (it no longer matches).
-// Another unpinned item with the new text goes, so a text is listed once.
-// Empty text = nothing changes.
-function editEntryText(history, oldText, newText) {
-  var values = Array.isArray(history) ? history.slice() : []
-  var t = String(newText === undefined || newText === null ? "" : newText)
-  var idx = -1
-  for (var i = 0; i < values.length; i++) if (values[i] && values[i].type === "text" && values[i].text === oldText) { idx = i; break }
-  if (idx < 0 || t.trim().length === 0 || t === oldText) return { history: values, index: idx, changed: false }
-  var e = {}
-  for (var k in values[idx]) e[k] = values[idx][k]
-  e.text = t
-  delete e.html
-  values[idx] = e
-  for (var j = values.length - 1; j >= 0; j--) {
-    if (j !== idx && values[j] && values[j].type === "text" && values[j].text === t && values[j].pinned !== true) {
-      values.splice(j, 1)
-      if (j < idx) idx--
-    }
-  }
-  return { history: values, index: idx, changed: true }
-}
-// Keys in the edit field: Enter saves, Shift+Enter is a new line, Esc cancels.
-function editKeyAction(key, shift) {
-  if (key === KEY.Escape) return "cancel"
-  if (key === KEY.Return || key === KEY.Enter) return shift ? "newline" : "save"
-  return ""
-}
+// "paste": select, paste and close (default). "copy": put it on the
+// clipboard, popup stays open. Anything else, including 1.32's
+// "pasteKeep", is "paste".
+function clickActionOf(v) { return v === "copy" ? "copy" : "paste" }
 
 // The caps line under the popup title, like the stock hero meta
 // ("CONNECTED"): "54 items · 3 pinned".
@@ -1170,7 +1130,6 @@ function rowActionNames(armed, phoneOnline, isText, linkKind, hasCopyText, hasMa
   if (hasCopyText) out.push("copytext")
   if (hasOcr) out.push("ocrtext")
   if (hasMarkdown) { out.push("markdown"); out.push("plaintext") }
-  if (isText) out.push("edit")
   if (phoneOnline && isText) out.push("send")
   out.push("delete")
   out.push("pin")
@@ -1597,10 +1556,6 @@ if (typeof module !== "undefined") {
     updateHowTo: updateHowTo,
     OCR_LANGUAGES: OCR_LANGUAGES,
     SEARCH_FILTER_EXAMPLES: SEARCH_FILTER_EXAMPLES,
-    CLICK_OPTIONS: CLICK_OPTIONS,
-    clickExplain: clickExplain,
-    editEntryText: editEntryText,
-    editKeyAction: editKeyAction,
     clearHistoryLabel: clearHistoryLabel,
     heroMetaLabel: heroMetaLabel,
     fluxQuarantineActive: fluxQuarantineActive,

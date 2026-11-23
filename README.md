@@ -47,12 +47,7 @@ imported once on first start. To hear about upstream changes, run
   click outside or open another bar popup to close),
   also when opened with Alt+V. Without the bar icon (bar widget not in the
   layout) it opens at the top-left corner. A compact list, no preview pane;
-  hover or select a row for its actions: edit (text items), phone (send), trash, pin.
-- **Edit an item.** The pencil button on a text row turns the row into a
-  text field with the whole text. Enter or the check button saves into the
-  same item, so its pin, place and copy time stay. Shift+Enter adds a line,
-  Esc cancels. The clipboard is not changed. Pick the item to paste the new
-  text.
+  hover or select a row for its actions: phone (send), trash, pin.
 - **Size:** the popup scales with the screen: full size from 1080 px logical
   height up, down to 85% on small laptop screens.
 - **Touchpad momentum:** a quick two-finger flick keeps the list scrolling
@@ -264,7 +259,7 @@ In the popup:
 |---|---|
 | type | search (case-insensitive regex; invalid regex = plain text) |
 | ↑ ↓ / Ctrl+K Ctrl+J, PgUp PgDn, Home End | move through the list |
-| Enter / click | paste into the window you came from (click: per Settings > General > "When you left-click an item": Copy only, Copy, paste and close (default), or Copy, paste and keep open: the popup closes for the paste and opens again with the same search) |
+| Enter / click | paste into the window you came from (click: per Settings > General > "Left click action": "Select, paste & close", the default, or "Select (copy only)", which leaves the popup open) |
 | Shift+Enter | copy only (select it without pasting) |
 | Alt+Enter | open (URL in browser, text in editor, image in editor) |
 | Ctrl+click / Ctrl+Space | add the row to the paste queue (numbered 1, 2, 3 …); again takes it out |
@@ -373,8 +368,9 @@ bash tests/uninstall.test.sh    # uninstall.sh: shows every step, waits for Ente
 bash tests/geometry/run-harness.sh v129 # offscreen: slot hints and keys, demo banner, settings window reopen after Super+W, feedback sent state
 bash tests/geometry/run-harness.sh v130 # offscreen: update check off / on (stub), OCR sizes, sidebar link, feedback note at 940 and 620 px
 bash tests/geometry/run-harness.sh v131 # offscreen: delete confirm, Ctrl+Z undo, General / History / OCR / Uninstall pages (add a dir to keep the PNGs)
-bash tests/geometry/run-harness.sh v132 # offscreen: popup header next to the stock PanelHero, edit mode, paste and keep open, settings pages, subtitle sizes, phone quarantine
-bash tests/geometry/run-harness.sh v1322 # offscreen: every popup close ends edit / clear question / armed delete; a cancelled OCR job clears its state
+bash tests/geometry/run-harness.sh v132 # offscreen: popup header next to the stock PanelHero, settings pages, subtitle sizes, phone quarantine
+bash tests/geometry/run-harness.sh v1322 # offscreen: every popup close ends the clear question / armed delete; a cancelled OCR job clears its state
+bash tests/geometry/run-harness.sh v133 # offscreen: no edit button, left-click pills (pasteKeep migrates), heading after Pinned and settings History page next to the stock Display panel section
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,

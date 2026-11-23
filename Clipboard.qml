@@ -107,8 +107,7 @@ Item {
   onOpenedChanged: {
     if (root.opened) { if (root.ocrDemo) root.ocrDemoShown = true; return }
     // Every way out (Esc, a pick, Alt+Shift+N, the bar icon, IPC hide) ends
-    // edit mode, the clear-history question and an armed delete.
-    root.editOrig = ""
+    // the clear-history question and an armed delete.
     root.disarmDelete()
     root.clearConfirmOpen = false
     if (root.ocrDemoShown) { root.ocrDemoArg = ""; root.ocrDemoShown = false }
@@ -371,7 +370,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.32.2"
+  readonly property string pluginVersion: "1.33.0"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -572,6 +571,8 @@ Item {
     try { st = JSON.parse(String(raw || "{}")) || {} } catch (e) { st = {} }
     root.privateMode = st.private === true
     root.clickAction = ClipboardHistory.clickActionOf(st.clickAction)
+    // A saved value from 1.32 ("pasteKeep") goes back to the default.
+    var migrate = st.clickAction !== undefined && st.clickAction !== root.clickAction
     root.ocrDismissed = ClipboardHistory.ocrDismissedOf(st.ocrDismissed)
     root.ocrOff = ClipboardHistory.ocrDismissedOf(st.ocrOff)
     root.updateCheck = st.updateCheck === true
@@ -583,6 +584,7 @@ Item {
     if (gk !== root.globalKeys || !root.globalKeysApplied) { root.globalKeys = gk; root.applyGlobalKeys() }
     var days = ClipboardHistory.keepDaysOf(st.keepDays)
     if (days !== root.keepDays) { root.keepDays = days; root.pruneOld() }
+    if (migrate) root.writeState()
     // Also runs at shell start: resumes Flux if private mode ended while the
     // shell was down, pauses it again if private mode is still on.
     root.syncFlux()
@@ -681,46 +683,14 @@ Item {
     root.clickAction = ClipboardHistory.clickActionOf(v)
     root.writeState()
   }
-  // Left click on a row, per Settings > General > "When you left-click an item".
+  // Left click on a row, per Settings > General > "Left click action".
   function clickIndex(index) {
-    if (root.clickAction === "pasteKeep" && !ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.pasteKeepIndex(index); return }
     if (root.clickAction !== "copy" || ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.activateIndex(index); return }
     if (index < 0 || index >= displayModel.count) return
     var r = displayModel.get(index)
     root.reselectKey = root.rowKey(r)
     root.dropQueue()
     Quickshell.execDetached([root.helper, "copy", String(r.historyIndex)])
-  }
-
-  // "Copy, paste and keep open": the popup closes so the paste lands in the
-  // window you were in (the popup holds the keyboard while open), then it
-  // opens again with the same search and the pasted item selected.
-  property var pasteKeepState: null
-  Process {
-    id: pasteKeepProc
-    onExited: if (root.pasteKeepState) pasteKeepTimer.restart()
-  }
-  Timer {
-    id: pasteKeepTimer
-    interval: 200
-    onTriggered: {
-      var st = root.pasteKeepState
-      root.pasteKeepState = null
-      if (!st || root.opened) return
-      root.open("{}")
-      if (st.filter !== "") { root.searchExpanded = true; searchInput.text = st.filter }
-      root.reselectKey = st.key
-      root.rebuildDisplay(true)
-    }
-  }
-  function pasteKeepIndex(index) {
-    if (index < 0 || index >= displayModel.count || pasteKeepProc.running) return
-    var row = displayModel.get(index)
-    root.pasteKeepState = { filter: root.filterText, key: root.rowKey(row) }
-    root.dropQueue()
-    root.opened = false
-    pasteKeepProc.command = [root.helper, "paste", String(row.historyIndex)]
-    pasteKeepProc.running = true
   }
 
   function setKeepDays(days) {
@@ -1340,49 +1310,11 @@ Item {
     else if (name === "plaintext") root.runOnIndex(index, "paste")
     else if (name === "ocrtext") root.copyOcrText(index)
     else if (name === "send") root.sendIndex(index)
-    else if (name === "edit") root.startEdit(index)
     else if (name === "pin") root.togglePinDisplayIndex(index)
     else if (name === "delete") root.requestDelete(index, byClick === true)
   }
 
   onSelectedIndexChanged: root.actionFocus = -1
-
-  // ---- edit a text item -------------------------------------------
-  // The row's Edit button opens the whole text in a field in the row; Enter
-  // (or the check button) saves it into the same history item (pin, place
-  // and time stay), Shift+Enter adds a line, Esc cancels. The clipboard
-  // itself is not touched; pick the item afterwards to paste the new text.
-  property string editOrig: ""
-  property string editDraft: ""
-  function startEdit(index) {
-    if (index < 0 || index >= displayModel.count) return
-    var row = displayModel.get(index)
-    if (row.entryType !== "text") return
-    var e = root.history[row.historyIndex]
-    if (!e || e.type !== "text") return
-    root.disarmDelete()
-    root.cursorActive = true
-    root.selectedIndex = index
-    root.editDraft = e.text
-    root.editOrig = e.text
-  }
-  function cancelEdit() {
-    if (root.editOrig === "") return
-    root.editOrig = ""
-    Qt.callLater(function() { if (root.opened) searchInput.forceActiveFocus() })
-  }
-  function saveEdit(text) {
-    if (root.editOrig === "") return
-    var r = ClipboardHistory.editEntryText(root.history, root.editOrig, text)
-    root.editOrig = ""
-    if (r.changed) {
-      root.history = r.history
-      root.saveHistory()
-      root.reselectKey = "text\n\n" + String(text)
-      root.rebuildDisplay(true)
-    }
-    Qt.callLater(function() { if (root.opened) searchInput.forceActiveFocus() })
-  }
 
   // ---- search field keys --------------------------------------------------
   // The search line is a real text field. Popup shortcuts are taken first
@@ -2037,50 +1969,46 @@ Item {
 
               PanelSeparator { width: parent.width; foreground: root.foreground }
 
-              // Left click: three stacked stock pills, the explanation of the
-              // chosen one underneath.
+              // Left click: the value row and the two stock pills, like the
+              // Display panel's SCALE row.
               Column {
                 width: parent.width
-                spacing: Style.space(10)
-                PanelSectionHeader {
-                  objectName: "clipClickHeader"
-                  text: "When you left-click an item"
-                  foreground: root.foreground
-                  fontFamily: root.fontFamily
+                spacing: Style.spacing.xs
+                Repeater {
+                  model: [
+                    { icon: "󰍽", label: "Left click action", value: root.clickAction === "copy" ? "stays open" : "closes the popup" }
+                  ]
+                  delegate: infoValueRow
                 }
-                Column {
+                Grid {
                   id: clickRow
                   objectName: "clipClickRow"
                   width: parent.width
+                  columns: 2
                   spacing: Style.spacing.xs
+                  readonly property real cellWidth: (width - spacing) / 2
+
                   Repeater {
-                    model: ClipboardHistory.CLICK_OPTIONS
+                    model: [
+                      { key: "copy", label: "Select (copy only)" },
+                      { key: "paste", label: "Select, paste & close" }
+                    ]
+
                     Button {
                       required property var modelData
                       objectName: "clipClickPill"
-                      width: clickRow.width
+                      width: clickRow.cellWidth
                       text: modelData.label
-                      fontSize: Style.font.bodySmall
+                      fontSize: Style.font.caption
                       foreground: root.foreground
                       fontFamily: root.fontFamily
                       horizontalPadding: Style.spacing.sm
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
-                      leftAlign: true
                       active: root.clickAction === modelData.key
                       onClicked: root.setClickAction(modelData.key)
                     }
                   }
-                }
-                Text {
-                  objectName: "clipClickExplain"
-                  width: parent.width
-                  wrapMode: Text.Wrap
-                  textFormat: Text.PlainText
-                  text: ClipboardHistory.clickExplain(root.clickAction)
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
                 }
               }
 
@@ -3077,27 +3005,35 @@ Item {
                 section.property: "sectionName"
                 section.criteria: ViewSection.FullString
                 section.delegate: Item {
+                  id: sectionItem
                   required property string section
+                  // The first heading after Pinned gets the stock separator
+                  // and the stock panel rhythm: separator, 14, heading (like
+                  // the Display panel's SCALE block).
+                  readonly property bool hasSep: section !== "" && section === root.firstHistorySection
                   width: ListView.view.width
-                  height: section ? Style.font.caption + Style.space(12) : 0
-                  // Thin stock separator above the first heading after Pinned.
+                  height: section === "" ? 0
+                    : (hasSep ? sepGap.height + clipSep.height + Style.space(14) + heading.height + Style.space(3)
+                      : Style.font.caption + Style.space(12))
+                  Item { id: sepGap; width: 1; height: Style.space(6) }
                   PanelSeparator {
+                    id: clipSep
                     objectName: "clipSep"
-                    visible: parent.section !== "" && parent.section === root.firstHistorySection
-                    anchors.top: parent.top
-                    anchors.topMargin: Style.space(2)
+                    visible: sectionItem.hasSep
+                    anchors.top: sepGap.bottom
                     anchors.left: parent.left
-                    anchors.leftMargin: Style.space(10)
                     anchors.right: parent.right
-                    anchors.rightMargin: Style.space(10)
                     foreground: root.foreground
                   }
                   Text {
+                    id: heading
                     visible: parent.section !== ""
                     anchors.left: parent.left
                     anchors.leftMargin: Style.space(12)
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: Style.space(3)
+                    // Same glyph overshoot reserve as the stock PanelSectionHeader.
+                    topPadding: Math.ceil(Style.font.caption * 0.15)
                     objectName: "clipSectionHeading"
                     text: parent.section.toUpperCase()
                     color: root.dimText
@@ -3139,18 +3075,9 @@ Item {
 
                   readonly property bool hasCursor: root.cursorActive && (root.dragRow >= 0 && root.dragHistoryIndex >= 0 ? historyIndex === root.dragHistoryIndex : index === root.selectedIndex)
                   readonly property bool armed: root.armedDeleteIndex !== -1 && historyIndex === root.armedDeleteIndex
-                  readonly property bool showActions: (hasCursor || rowMouse.containsMouse) && !editing
-                  // Edit mode (text items): the row grows to show the
-                  // whole text in a field, with a check button to save.
-                  readonly property bool editing: root.editOrig !== "" && entryType === "text" && historyIndex >= 0 && historyIndex < root.history.length && root.history[historyIndex].text === root.editOrig
-                  // The draft lives in root, so a list rebuild (a new copy
-                  // arriving while editing) recreates the row with it.
-                  function beginEdit() { editField.text = root.editDraft; editField.cursorPosition = editField.length; Qt.callLater(function() { editField.forceActiveFocus() }) }
-                  onEditingChanged: if (editing) beginEdit()
-                  Component.onCompleted: if (editing) beginEdit()
-
+                  readonly property bool showActions: hasCursor || rowMouse.containsMouse
                   width: ListView.view.width
-                  height: editing ? Math.min(Math.max(root.rowHeight, editField.contentHeight + Style.spacing.controlPaddingY * 2 + Style.space(8)), Math.round(ListView.view.height * 0.7)) : root.rowHeight
+                  height: root.rowHeight
                   objectName: "clipRow"
                   foreground: root.foreground
                   accent: root.accent
@@ -3171,7 +3098,6 @@ Item {
                   MouseArea {
                     id: rowMouse
                     anchors.fill: parent
-                    enabled: !row.editing
                     hoverEnabled: true
                     cursorShape: root.dragRow === row.index && root.dragMoved ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                     // Pinned rows: the press belongs to the row (drag = reorder),
@@ -3229,89 +3155,8 @@ Item {
                     }
                   }
 
-                  // Edit field: stock text field look (TextField: control fill,
-                  // normal border, focus border), whole text, wraps; Enter
-                  // saves, Shift+Enter is a new line, Esc cancels.
-                  Item {
-                    objectName: "clipEditBox"
-                    visible: row.editing
-                    anchors.fill: parent
-                    anchors.leftMargin: Style.space(6)
-                    anchors.rightMargin: Style.space(6)
-                    anchors.topMargin: Style.space(4)
-                    anchors.bottomMargin: Style.space(4)
-
-                    BorderSurface {
-                      id: editSurface
-                      anchors.left: parent.left
-                      anchors.right: editSave.left
-                      anchors.rightMargin: Style.space(6)
-                      anchors.top: parent.top
-                      anchors.bottom: parent.bottom
-                      radius: Style.cornerRadius
-                      color: Util.alpha(root.foreground, 0.12)
-                      borderSpec: Border.controlSpec(editField.activeFocus ? "focus" : "normal", root.foreground, root.accent)
-
-                      Flickable {
-                        id: editFlick
-                        anchors.fill: parent
-                        anchors.leftMargin: Style.spacing.controlPaddingX
-                        anchors.rightMargin: Style.spacing.controlPaddingX
-                        anchors.topMargin: Style.spacing.controlPaddingY
-                        anchors.bottomMargin: Style.spacing.controlPaddingY
-                        clip: true
-                        contentWidth: width
-                        contentHeight: editField.contentHeight
-                        boundsBehavior: Flickable.StopAtBounds
-                        function ensureVisible(r) {
-                          if (contentY >= r.y) contentY = r.y
-                          else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
-                        }
-
-                        TextEdit {
-                          id: editField
-                          objectName: "clipEditField"
-                          width: editFlick.width
-                          wrapMode: TextEdit.Wrap
-                          textFormat: TextEdit.PlainText
-                          selectByMouse: true
-                          color: root.foreground
-                          selectionColor: root.selectedBackground
-                          selectedTextColor: root.selectedText
-                          font.family: root.fontFamily
-                          font.pixelSize: Style.font.body
-                          onCursorRectangleChanged: editFlick.ensureVisible(cursorRectangle)
-                          onTextChanged: if (row.editing) root.editDraft = text
-                          Keys.onPressed: function(event) {
-                            var a = ClipboardHistory.editKeyAction(event.key, (event.modifiers & Qt.ShiftModifier) !== 0)
-                            if (a === "save") root.saveEdit(editField.text)
-                            else if (a === "cancel") root.cancelEdit()
-                            else if (a === "newline") editField.insert(editField.cursorPosition, "\n")
-                            else return
-                            event.accepted = true
-                          }
-                        }
-                      }
-                    }
-
-                    PanelActionButton {
-                      id: editSave
-                      objectName: "clipEditSave"
-                      anchors.right: parent.right
-                      anchors.top: parent.top
-                      iconText: "󰄬"
-                      tooltipText: "Save (Enter) · Esc cancels"
-                      fontFamily: root.fontFamily
-                      fontSize: Style.font.subtitle
-                      foreground: root.accent
-                      hoverColor: root.accent
-                      onClicked: root.saveEdit(editField.text)
-                    }
-                  }
-
                   Row {
                     id: rowContent
-                    visible: !row.editing
                     anchors.fill: parent
                     anchors.leftMargin: Style.space(10)
                     anchors.rightMargin: Style.space(10)
@@ -3434,7 +3279,6 @@ Item {
 
                       Repeater {
                         model: [
-                          { glyph: "󰏫", tip: "edit", show: row.showActions && row.entryType === "text", text: "Edit" },
                           { glyph: "󰄜", tip: "send", show: row.showActions && root.phoneOnline && row.entryType === "text", text: "Send via Flux" },
                           { glyph: row.armed ? "󰄬" : "󰩺", tip: "delete", show: row.showActions || row.armed, text: row.armed ? "Click again to delete" : "Delete" },
                           { glyph: row.pinned ? "󰐃" : "󰤱", tip: "pin", show: (row.showActions || row.pinned), text: row.pinned ? "Unpin" : "Pin" }
@@ -4031,7 +3875,8 @@ Item {
           id: settingsPaneFlick
           objectName: "settingsWindowFlick"
           anchors.top: paneHead.bottom
-          anchors.topMargin: Style.space(12)
+          // Separator to content: 14, like the stock panels.
+          anchors.topMargin: Style.space(14)
           anchors.left: parent.left
           anchors.right: parent.right
           anchors.bottom: parent.bottom

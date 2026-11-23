@@ -2,6 +2,12 @@
 
 Newest first. Older history is in the git log.
 
+## 1.33.0
+
+- Removed: editing items. The pencil button and edit mode are gone.
+- Removed: the 1.32 left-click options. Settings > General has the 1.31 "Left click action" row with its two pills again: "Select (copy only)" and "Select, paste & close" (the default). A saved "Copy, paste and keep open" turns back into the default.
+- Fix: the popup's first heading after Pinned sat 2 px under its separator. It now follows the stock panel rhythm (separator, 14 px, heading), with the separator as wide as the header rule. The settings pages start 14 px under the page rule, like the stock panels (was 12).
+
 ## 1.32.2
 
 Release checks: a security audit and a review of hidden state machines.
