@@ -259,6 +259,9 @@ Item {
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int footerRowHeight: Math.max(Style.space(26), Style.font.body + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
+  // 1.32.0: the caps line under the popup title (stock hero meta).
+  readonly property string heroMeta: root.privateMode ? "Incognito · nothing is saved"
+    : ClipboardHistory.heroMetaLabel(root.history.length, root.pinnedCount)
   // Small extra gap between the list and the footer.
   property int footerGap: Style.space(4)
   // Scales with the screen's logical height: unchanged from 1080 px up,
@@ -327,6 +330,7 @@ Item {
     root.settingsKeysRef = null
     root.settingsPaneFlickRef = null
     root.uninstallArmed = ""
+    root.clearArmed = false
     settingsWindowLoader.active = false
   }
 
@@ -351,7 +355,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.31.1"
+  readonly property string pluginVersion: "1.32.0"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -434,7 +438,7 @@ Item {
     if (name === "globalKeys") { root.globalKeys = !root.globalKeys; root.writeState(); root.applyGlobalKeys(); return }
     if (name === "updateCheck") { root.updateCheck = !root.updateCheck; if (!root.updateCheck) root.updateLatest = ""; root.writeState(); root.maybeCheckUpdate(); return }
     if (name === "incognito") root.setPrivate(!root.privateMode, false)
-    else if (name === "clear") { root.open("{}"); root.requestClearHistory() }
+    else if (name === "clear") root.requestClearFromSettings()
   }
 
   // 1.29.0: global shortcuts from the plugin itself (global-keys.sh): Alt+V
@@ -485,6 +489,7 @@ Item {
   }
 
   function close() {
+    root.editOrig = ""
     root.disarmDelete()
     root.cancelClearHistory()
     root.opened = false
@@ -536,6 +541,9 @@ Item {
   // ---- incognito (private) mode -------------------------------------------
   function setPrivate(value, notify) {
     var fluxWasPaused = root.fluxPaused
+    // 1.32.0: leaving incognito starts the phone quarantine (see below).
+    if (root.privateMode && !value) { root.fluxResumeMs = Date.now(); root.fluxOnlineMs = 0; fluxResumePoll.restart() }
+    else if (value) { root.fluxResumeMs = 0; root.quarantinePending = []; fluxResumePoll.stop() }
     root.privateMode = value
     root.writeState()
     root.syncFlux()
@@ -662,14 +670,47 @@ Item {
     root.clickAction = ClipboardHistory.clickActionOf(v)
     root.writeState()
   }
-  // Left click on a row, per the "Click action" setting.
+  // Left click on a row, per Settings > General > "When you left-click an
+  // item" (1.32.0: copy / paste / pasteKeep).
   function clickIndex(index) {
+    if (root.clickAction === "pasteKeep" && !ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.pasteKeepIndex(index); return }
     if (root.clickAction !== "copy" || ClipboardHistory.queueOnPick(root.queueKeys.length)) { root.activateIndex(index); return }
     if (index < 0 || index >= displayModel.count) return
     var r = displayModel.get(index)
     root.reselectKey = root.rowKey(r)
     root.dropQueue()
     Quickshell.execDetached([root.helper, "copy", String(r.historyIndex)])
+  }
+
+  // "Copy, paste and keep open": the popup closes so the paste lands in the
+  // window you were in (the popup holds the keyboard while open), then it
+  // opens again with the same search and the pasted item selected.
+  property var pasteKeepState: null
+  Process {
+    id: pasteKeepProc
+    onExited: if (root.pasteKeepState) pasteKeepTimer.restart()
+  }
+  Timer {
+    id: pasteKeepTimer
+    interval: 200
+    onTriggered: {
+      var st = root.pasteKeepState
+      root.pasteKeepState = null
+      if (!st || root.opened) return
+      root.open("{}")
+      if (st.filter !== "") { root.searchExpanded = true; searchInput.text = st.filter }
+      root.reselectKey = st.key
+      root.rebuildDisplay(true)
+    }
+  }
+  function pasteKeepIndex(index) {
+    if (index < 0 || index >= displayModel.count || pasteKeepProc.running) return
+    var row = displayModel.get(index)
+    root.pasteKeepState = { filter: root.filterText, key: root.rowKey(row) }
+    root.dropQueue()
+    root.opened = false
+    pasteKeepProc.command = [root.helper, "paste", String(row.historyIndex)]
+    pasteKeepProc.running = true
   }
 
   function setKeepDays(days) {
@@ -684,10 +725,58 @@ Item {
     if (!root.undoStack.some(function(u) { return u.entry && u.entry.type === "image" })) pruneTimer.restart()
   }
 
+  // 1.32.0: phone items sent during incognito. Incognito stops fluxd; the
+  // phone keeps what it sent meanwhile and delivers it as soon as Flux is
+  // back (seen on the XPS: link up 18:50:11, the queued phone item 18:50:11).
+  // Flux itself can't be told to drop it, so after incognito ends, until 5 s
+  // after the phone is online again (at most 10 min), new text waits until
+  // `flux-cli status` says where it came from: from the phone, it is not
+  // saved and the clipboard is cleared; anything else is saved as usual.
+  property real fluxResumeMs: 0
+  property real fluxOnlineMs: 0
+  property var quarantinePending: []
+  Timer {
+    id: fluxResumePoll
+    interval: 2000
+    repeat: true
+    onTriggered: {
+      if (!root.fluxPresent || !ClipboardHistory.fluxQuarantineActive(root.fluxResumeMs, root.fluxOnlineMs, Date.now())) {
+        stop(); root.fluxResumeMs = 0; root.flushQuarantine(null); return
+      }
+      // flux-cli not answering: don't hold local copies for minutes.
+      if (root.quarantinePending.length && Date.now() - root.quarantinePending[0].heldAt > 10000) root.flushQuarantine(null)
+      if (!statusProc.running) statusProc.running = true
+    }
+  }
+  function flushQuarantine(st) {
+    var pending = root.quarantinePending
+    if (!pending.length) return
+    root.quarantinePending = []
+    var now = Math.floor(Date.now() / 1000)
+    for (var i = 0; i < pending.length; i++) {
+      var e = pending[i].entry
+      if (st && ClipboardHistory.fluxOrigin(st, e.text, now, 60) === "phone") {
+        // Still on the clipboard (nothing copied since): clear it.
+        if (i === pending.length - 1) Quickshell.execDetached([root.helper, "clear"])
+        continue
+      }
+      root.storeEntry(e)
+    }
+  }
+
   function addClipboardJson(line) {
     if (root.privateMode) return
     var entry = ClipboardHistory.parseEntryJson(line)
     if (!entry) return
+    if (entry.type === "text" && root.fluxPresent && root.fluxResumeMs > 0
+        && ClipboardHistory.fluxQuarantineActive(root.fluxResumeMs, root.fluxOnlineMs, Date.now())) {
+      root.quarantinePending = root.quarantinePending.concat([{ entry: entry, heldAt: Date.now() }])
+      originTimer.restart()
+      return
+    }
+    root.storeEntry(entry)
+  }
+  function storeEntry(entry) {
     root.currentClipKey = ClipboardHistory.clipKeyOf(entry, Qt.md5)
     entry.at = Date.now()  // copy time: day headings and auto-delete
     root.history = ClipboardHistory.pruneByAge(ClipboardHistory.addEntry(root.history, entry, root.historyLimit), root.keepDays, Date.now())
@@ -709,6 +798,8 @@ Item {
     if (!st) return
     root.phoneOnline = ClipboardHistory.fluxPhoneOnline(st)
     root.phoneName = ClipboardHistory.fluxPhoneName(st)
+    if (root.fluxResumeMs > 0 && root.phoneOnline && root.fluxOnlineMs === 0) root.fluxOnlineMs = Date.now()
+    if (root.quarantinePending.length) root.flushQuarantine(st)
     root.lastSync = Math.max(root.lastSync, ClipboardHistory.fluxLastSync(st))
     var queue = root.originQueue
     root.originQueue = []
@@ -762,7 +853,7 @@ Item {
     Qt.callLater(function() { searchInput.forceActiveFocus() })
   }
 
-  function confirmClearHistory() {
+  function clearUnpinned() {
     var currentWasUnpinned = root.history.length > 0 && !root.history[0].pinned
     root.history = ClipboardHistory.clearHistory(root.history)
     root.saveHistory()
@@ -772,7 +863,21 @@ Item {
     root.disarmPointer()
     root.clearConfirmOpen = false
     root.rebuildDisplay()
+  }
+  function confirmClearHistory() {
+    root.clearUnpinned()
     Qt.callLater(function() { searchInput.forceActiveFocus() })
+  }
+  // 1.32.0: Settings > History clears right there (the popup stays shut):
+  // the first click turns the button red with a check, the second deletes.
+  // Disarms after 3 s or when the mouse leaves, like the delete buttons.
+  property bool clearArmed: false
+  Timer { id: clearArmTimer; interval: 3000; onTriggered: root.clearArmed = false }
+  function requestClearFromSettings() {
+    if (root.unpinnedCount === 0) { root.clearArmed = false; return }
+    if (!root.clearArmed) { root.clearArmed = true; clearArmTimer.restart(); return }
+    root.clearArmed = false
+    root.clearUnpinned()
   }
 
   // 1.31.0: Ctrl+Z in the popup restores the last deleted items (up to 10,
@@ -1226,11 +1331,47 @@ Item {
     else if (name === "plaintext") root.runOnIndex(index, "paste")
     else if (name === "ocrtext") root.copyOcrText(index)
     else if (name === "send") root.sendIndex(index)
+    else if (name === "edit") root.startEdit(index)
     else if (name === "pin") root.togglePinDisplayIndex(index)
     else if (name === "delete") root.requestDelete(index, byClick === true)
   }
 
   onSelectedIndexChanged: root.actionFocus = -1
+
+  // ---- edit a text item (1.32.0) -------------------------------------------
+  // The row's Edit button opens the whole text in a field in the row; Enter
+  // (or the check button) saves it into the same history item (pin, place
+  // and time stay), Shift+Enter adds a line, Esc cancels. The clipboard
+  // itself is not touched; pick the item afterwards to paste the new text.
+  property string editOrig: ""
+  function startEdit(index) {
+    if (index < 0 || index >= displayModel.count) return
+    var row = displayModel.get(index)
+    if (row.entryType !== "text") return
+    var e = root.history[row.historyIndex]
+    if (!e || e.type !== "text") return
+    root.disarmDelete()
+    root.cursorActive = true
+    root.selectedIndex = index
+    root.editOrig = e.text
+  }
+  function cancelEdit() {
+    if (root.editOrig === "") return
+    root.editOrig = ""
+    Qt.callLater(function() { if (root.opened) searchInput.forceActiveFocus() })
+  }
+  function saveEdit(text) {
+    if (root.editOrig === "") return
+    var r = ClipboardHistory.editEntryText(root.history, root.editOrig, text)
+    root.editOrig = ""
+    if (r.changed) {
+      root.history = r.history
+      root.saveHistory()
+      root.reselectKey = "text\n\n" + String(text)
+      root.rebuildDisplay(true)
+    }
+    Qt.callLater(function() { if (root.opened) searchInput.forceActiveFocus() })
+  }
 
   // ---- search field keys --------------------------------------------------
   // The search line is a real text field. Popup shortcuts are taken first
@@ -1655,168 +1796,196 @@ Item {
         anchors.fill: parent
         spacing: root.contentSpacing
 
-        // Search line + entry count
-        Item {
+        // 1.32.0: header like the stock Wi-Fi / Bluetooth / Display popups:
+        // their PanelHero (icon at Style.font.display, title at
+        // Style.font.title bold, caps meta line), then a PanelSeparator,
+        // 14 px apart as in the Bluetooth panel. The search field takes the
+        // title's place while searching; the search button and the
+        // incognito badge sit on the right like the stock hero actions.
+        Column {
+          id: headerBlock
+          objectName: "clipHeader"
           width: parent.width
-          height: root.headerHeight
+          spacing: Style.space(14)
 
-          // Field box styled like the stock Wi-Fi password field
-          // (qs.Ui TextField: Style.controlFill + Border.controlSpec, focus state).
-          // Collapsed header: title in the stock panel title style
-          // (PanelHero: Style.font.title, bold) and the stock icon button.
-          Text {
-            id: headerTitle
-            objectName: "headerTitle"
-            visible: !root.searchShown
-            anchors.left: parent.left
-            // Same inset as the row text (row leftMargin, stock Style.space(10)).
-            anchors.leftMargin: Style.space(10)
-            anchors.right: incognitoBadge.visible ? incognitoBadge.left : (searchButton.visible ? searchButton.left : parent.right)
-            anchors.rightMargin: Style.space(12)
-            anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.PlainText
-            text: "Clipboard Manager"
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.title
-            font.bold: true
-            elide: Text.ElideRight
-          }
-          // Square, styled exactly like the expanded search field (same
-          // fill, border and radius as searchBox), icon centred.
-          BorderSurface {
-            id: searchButton
-            objectName: "searchButton"
-            visible: !root.searchShown
-            // Above searchInput: the (invisible while collapsed) text field
-            // spans the whole row and is declared later, so without this it
-            // took most clicks meant for the button.
-            z: 2
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: height
-            color: searchBox.color
-            borderSpec: searchBox.spec
-            radius: searchBox.radius
+          Item {
+            id: headerRow
+            width: parent.width
+            height: Math.max(hero.implicitHeight, root.headerHeight)
 
-            Text {
-              anchors.centerIn: parent
-              textFormat: Text.PlainText
-              text: "󰍉"
-              color: root.foreground
+            TextMetrics {
+              id: heroIconMetrics
               font.family: root.fontFamily
-              font.pixelSize: Style.font.icon
+              font.pixelSize: Style.font.display
+              text: hero.iconGlyph
             }
 
-            MouseArea {
-              id: searchButtonMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: {
-                root.searchExpanded = true
-                searchInput.forceActiveFocus()
+            PanelHero {
+              id: hero
+              objectName: "clipHero"
+              readonly property string iconGlyph: root.privateMode ? "󰗹" : "󰅌"
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width - (heroTrailing.width > 0 ? heroTrailing.width + Style.space(12) : 0)
+              title: root.searchShown ? "" : "Clipboard"
+              meta: root.searchShown ? "" : root.heroMeta
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              iconComponent: Component {
+                Text {
+                  objectName: "clipHeroIcon"
+                  textFormat: Text.PlainText
+                  text: hero.iconGlyph
+                  color: root.privateMode ? root.accent : root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.display
+                }
+              }
+            }
+
+            Row {
+              id: heroTrailing
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(8)
+
+              // Small badge, only while incognito is on.
+              Rectangle {
+                id: incognitoBadge
+                visible: root.privateMode
+                anchors.verticalCenter: parent.verticalCenter
+                width: badgeText.implicitWidth + Style.space(12)
+                height: badgeText.implicitHeight + Style.space(4)
+                radius: root.cornerRadius
+                color: Util.alpha(root.accent, 0.16)
+
+                Text {
+                  id: badgeText
+                  anchors.centerIn: parent
+                  textFormat: Text.PlainText
+                  text: "󰗹 Incognito"
+                  color: root.accent
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+
+                MouseArea {
+                  id: badgeMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+
+                  PanelToolTip {
+                    visible: badgeMouse.containsMouse
+                    text: root.fluxPaused ? "Incognito: copies not saved, Flux sync paused" : "Incognito: copies not saved"
+                  }
+                }
+              }
+
+              // Square, styled exactly like the expanded search field (same
+              // fill, border and radius as searchBox), icon centred.
+              BorderSurface {
+                id: searchButton
+                objectName: "searchButton"
+                visible: !root.searchShown
+                // Above searchInput: the (invisible while collapsed) text field
+                // spans the whole row and is declared later, so without this it
+                // took most clicks meant for the button.
+                z: 2
+                anchors.verticalCenter: parent.verticalCenter
+                height: root.headerHeight
+                width: height
+                color: searchBox.color
+                borderSpec: searchBox.spec
+                radius: searchBox.radius
+
+                Text {
+                  anchors.centerIn: parent
+                  textFormat: Text.PlainText
+                  text: "󰍉"
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.icon
+                }
+
+                MouseArea {
+                  id: searchButtonMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    root.searchExpanded = true
+                    searchInput.forceActiveFocus()
+                  }
+                }
+              }
+            }
+
+            BorderSurface {
+              id: searchBox
+              visible: root.searchShown
+              // While searching, the field takes the place of the title.
+              anchors.left: parent.left
+              anchors.leftMargin: heroIconMetrics.advanceWidth + Style.space(14)
+              anchors.right: heroTrailing.left
+              anchors.rightMargin: heroTrailing.width > 0 ? Style.space(12) : 0
+              anchors.verticalCenter: parent.verticalCenter
+              height: root.headerHeight
+              // The stock focus tokens (fill 0.08, border 0.25) barely show on the
+              // popup background, so: a clearly lighter fill and the stock
+              // normal control border (0.4), same radius and insets.
+              readonly property var spec: Border.controlSpec("normal", root.foreground, root.accent)
+              color: Util.alpha(root.foreground, 0.12)
+              borderSpec: spec
+              radius: Style.cornerRadius
+            }
+
+            // Always holds the keyboard focus, so typing while collapsed lands
+            // here and expands the field; invisible (no caret) while collapsed.
+            TextInput {
+              id: searchInput
+              opacity: root.searchShown ? 1 : 0
+              cursorVisible: root.searchShown && activeFocus
+              anchors.left: searchBox.left
+              anchors.right: searchBox.right
+              anchors.leftMargin: Style.spacing.controlPaddingX + Border.left(searchBox.spec)
+              anchors.rightMargin: Style.spacing.controlPaddingX + Border.right(searchBox.spec)
+              anchors.top: searchBox.top
+              anchors.bottom: searchBox.bottom
+              verticalAlignment: TextInput.AlignVCenter
+              focus: true
+              clip: true
+              selectByMouse: true
+              persistentSelection: false
+              color: root.foreground
+              selectionColor: root.selectedBackground
+              selectedTextColor: root.selectedText
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              Keys.priority: Keys.BeforeItem
+              Keys.onPressed: function(event) { root.handleSearchKey(event) }
+              onTextChanged: if (text !== root.filterText) root.setFilter(text)
+
+              Text {
+                anchors.fill: parent
+                verticalAlignment: Text.AlignVCenter
+                visible: searchInput.text === ""
+                textFormat: Text.PlainText
+                text: "Search clipboard…"
+                color: root.foreground
+                opacity: 0.58
+                font: searchInput.font
+                elide: Text.ElideRight
               }
             }
           }
 
-          BorderSurface {
-            id: searchBox
-            visible: root.searchShown
-            anchors.left: parent.left
-            anchors.right: incognitoBadge.visible ? incognitoBadge.left : parent.right
-            anchors.rightMargin: incognitoBadge.visible ? Style.space(12) : 0
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            // The stock focus tokens (fill 0.08, border 0.25) barely show on the
-            // popup background, so: a clearly lighter fill and the stock
-            // normal control border (0.4), same radius and insets.
-            readonly property var spec: Border.controlSpec("normal", root.foreground, root.accent)
-            color: Util.alpha(root.foreground, 0.12)
-            borderSpec: spec
-            radius: Style.cornerRadius
-          }
-
-          // Always holds the keyboard focus, so typing while collapsed lands
-          // here and expands the field; invisible (no caret) while collapsed.
-          TextInput {
-            id: searchInput
-            opacity: root.searchShown ? 1 : 0
-            cursorVisible: root.searchShown && activeFocus
-            anchors.left: searchBox.left
-            anchors.right: searchBox.right
-            anchors.leftMargin: Style.spacing.controlPaddingX + Border.left(searchBox.spec)
-            anchors.rightMargin: Style.spacing.controlPaddingX + Border.right(searchBox.spec)
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            verticalAlignment: TextInput.AlignVCenter
-            focus: true
-            clip: true
-            selectByMouse: true
-            persistentSelection: false
-            color: root.foreground
-            selectionColor: root.selectedBackground
-            selectedTextColor: root.selectedText
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-            Keys.priority: Keys.BeforeItem
-            Keys.onPressed: function(event) { root.handleSearchKey(event) }
-            onTextChanged: if (text !== root.filterText) root.setFilter(text)
-
-            Text {
-              anchors.fill: parent
-              verticalAlignment: Text.AlignVCenter
-              visible: searchInput.text === ""
-              textFormat: Text.PlainText
-              text: "Search clipboard…"
-              color: root.foreground
-              opacity: 0.58
-              font: searchInput.font
-              elide: Text.ElideRight
-            }
-          }
-
-          // Small badge, only while incognito is on.
-          Rectangle {
-            id: incognitoBadge
-            visible: root.privateMode
-            anchors.right: searchButton.visible ? searchButton.left : parent.right
-            anchors.rightMargin: searchButton.visible ? Style.space(8) : 0
-            anchors.verticalCenter: parent.verticalCenter
-            width: badgeText.implicitWidth + Style.space(12)
-            height: badgeText.implicitHeight + Style.space(4)
-            radius: root.cornerRadius
-            color: Util.alpha(root.accent, 0.16)
-
-            Text {
-              id: badgeText
-              anchors.centerIn: parent
-              textFormat: Text.PlainText
-              text: "󰗹 Incognito"
-              color: root.accent
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-            }
-          }
-
-          MouseArea {
-            id: badgeMouse
-            anchors.fill: incognitoBadge
-            visible: incognitoBadge.visible
-            hoverEnabled: true
-
-            PanelToolTip {
-              visible: badgeMouse.containsMouse
-              text: root.fluxPaused ? "Incognito: copies not saved, Flux sync paused" : "Incognito: copies not saved"
-            }
-          }
+          PanelSeparator { objectName: "clipHeaderRule"; width: parent.width; foreground: root.foreground }
         }
 
         Item {
           width: parent.width
-          height: parent.height - root.headerHeight - footer.implicitHeight - root.contentSpacing * 2
+          height: parent.height - headerBlock.height - footer.implicitHeight - root.contentSpacing * 2
 
           // Settings sections (Components), one per page of the settings window.
           Component {
@@ -1824,92 +1993,80 @@ Item {
             Column {
               id: sec
               width: parent ? parent.width : 0
-              spacing: Style.space(2)
+              // 1.32.0: like the stock Display panel: blocks 14 apart with a
+              // PanelSeparator between them, everything flush with the page
+              // heading.
+              spacing: Style.space(14)
 
-                // 1.25.0: sections like the stock Display panel (PanelSeparator +
-                // PanelSectionHeader between them), most-used settings first.
-                Repeater {
-                  model: [
-                    { key: "incognito", label: "󰗹  Incognito", value: root.privateMode ? "on" : "off", hint: "Ctrl+I" }
-                  ]
-                  delegate: infoActionRow
-                }
-                Text {
-                  objectName: "incognitoHint"
-                  x: Style.space(10)
-                  bottomPadding: Style.space(8)
-                  width: parent.width - Style.space(20)
-                  wrapMode: Text.Wrap
-                  textFormat: Text.PlainText
-                  text: "Turn it on or off with Ctrl+I in the popup, or right-click the clipboard icon in the top bar. Nothing is saved while it is on."
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
-                Repeater {
-                  model: [
-                    { icon: "󰍽", label: "Left click action", value: root.clickAction === "copy" ? "stays open" : "closes the popup" }
-                  ]
-                  delegate: infoValueRow
-                }
+              Repeater {
+                model: [
+                  { key: "incognito", label: "Incognito", on: root.privateMode, accent: true,
+                    hint: "Nothing you copy is saved, and Flux pauses too, so nothing reaches your phone. Ctrl+I in the popup, or right-click the top-bar icon." }
+                ]
+                delegate: settingSwitchRow
+              }
 
-                // Stock pills, like the Display panel's SCALE row.
-                Grid {
+              PanelSeparator { width: parent.width; foreground: root.foreground }
+
+              // Left click: three stacked stock pills, the explanation of the
+              // chosen one underneath.
+              Column {
+                width: parent.width
+                spacing: Style.space(10)
+                PanelSectionHeader {
+                  objectName: "clipClickHeader"
+                  text: "When you left-click an item"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                }
+                Column {
                   id: clickRow
                   objectName: "clipClickRow"
-                  x: Style.space(10)
-                  width: parent.width - Style.space(20)
-                  columns: 2
+                  width: parent.width
                   spacing: Style.spacing.xs
-                  readonly property real cellWidth: (width - spacing) / 2
-
                   Repeater {
-                    model: [
-                      { key: "copy", label: "Select (copy only)" },
-                      { key: "paste", label: "Select, paste & close" }
-                    ]
-
+                    model: ClipboardHistory.CLICK_OPTIONS
                     Button {
                       required property var modelData
                       objectName: "clipClickPill"
-                      width: clickRow.cellWidth
+                      width: clickRow.width
                       text: modelData.label
-                      fontSize: Style.font.caption
+                      fontSize: Style.font.bodySmall
                       foreground: root.foreground
                       fontFamily: root.fontFamily
                       horizontalPadding: Style.spacing.sm
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
+                      leftAlign: true
                       active: root.clickAction === modelData.key
                       onClicked: root.setClickAction(modelData.key)
                     }
                   }
                 }
-
-                // 1.30.0: update check, off by default.
-                Item { width: 1; height: Style.space(8) }
-                Repeater {
-                  model: [
-                    { key: "updateCheck", label: "󰚰  Check for updates: " + (root.updateCheck ? "on" : "off"), value: "", hint: "" }
-                  ]
-                  delegate: infoActionRow
-                }
                 Text {
-                  objectName: "updateCheckStatus"
-                  x: Style.space(10)
-                  bottomPadding: Style.space(8)
-                  width: parent.width - Style.space(20)
+                  objectName: "clipClickExplain"
+                  width: parent.width
                   wrapMode: Text.Wrap
                   textFormat: Text.PlainText
-                  text: !root.updateCheck
-                    ? "Off. When on, Nice Clipboard asks GitHub once a day for the newest published version (an anonymous request, nothing about you or this computer is sent) and shows a note in the popup when there is one."
-                    : (root.updateAvailable ? "Version " + root.updateLatest + " is available (you have " + root.pluginVersion + ")."
-                      : (root.updateLatest !== "" ? "Up to date (" + root.pluginVersion + "). Checked once a day."
-                        : "On: checked once a day when the popup opens. No published version found yet."))
+                  text: ClipboardHistory.clickExplain(root.clickAction)
                   color: root.dimText
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.bodySmall
                 }
+              }
+
+              PanelSeparator { width: parent.width; foreground: root.foreground }
+
+              // 1.30.0: update check, off by default. 1.32.0: a real switch.
+              Repeater {
+                model: [
+                  { key: "updateCheck", label: "Check for updates", on: root.updateCheck,
+                    hint: "Once a day, asks GitHub whether a newer version exists. Nothing about you or this computer is sent.",
+                    status: !root.updateCheck ? "" : (root.updateAvailable ? "Version " + root.updateLatest + " is available (you have " + root.pluginVersion + ")."
+                      : (root.updateLatest !== "" ? "Up to date (" + root.pluginVersion + ")." : "")) }
+                ]
+                delegate: settingSwitchRow
+              }
             }
           }
 
@@ -1927,7 +2084,6 @@ Item {
                 spacing: Style.space(10)
                 PanelSectionHeader {
                   objectName: "clipKeepHeader"
-                  x: Style.space(10)
                   text: "Automatically delete items after"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
@@ -1938,8 +2094,7 @@ Item {
                 Grid {
                   id: keepRow
                   objectName: "clipKeepRow"
-                  x: Style.space(10)
-                  width: parent.width - Style.space(20)
+                  width: parent.width
                   columns: ClipboardHistory.KEEP_DAYS.length
                   spacing: Style.spacing.xs
                   readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
@@ -1967,11 +2122,39 @@ Item {
 
                 PanelSeparator { width: parent.width; foreground: root.foreground }
 
-                Repeater {
-                  model: [
-                    { key: "clear", label: "󰩺  Clear history (pins stay)", value: "", hint: "Shift+Del" }
-                  ]
-                  delegate: infoActionRow
+                // 1.32.0: clears here, in the settings window (the popup stays
+                // shut). Counts unpinned items only; first click arms (red,
+                // check), second click deletes, like the row delete button.
+                Item {
+                  width: clearBtn.width
+                  height: clearBtn.height
+                  Rectangle {
+                    objectName: "clearArmedFill"
+                    anchors.fill: parent
+                    radius: Style.cornerRadius
+                    color: root.urgent
+                    visible: root.clearArmed
+                  }
+                  Button {
+                    id: clearBtn
+                    objectName: "clearHistoryButton"
+                    text: root.clearArmed ? "Click again to delete " + root.unpinnedCount + (root.unpinnedCount === 1 ? " item" : " items")
+                      : ClipboardHistory.clearHistoryLabel(root.unpinnedCount)
+                    iconText: root.clearArmed ? "󰄬" : "󰩺"
+                    enabled: root.unpinnedCount > 0
+                    opacity: enabled ? 1 : 0.5
+                    fontSize: Style.font.body
+                    iconSize: Style.font.body
+                    foreground: root.clearArmed ? "#ffffff" : root.foreground
+                    background: "transparent"
+                    fontFamily: root.fontFamily
+                    horizontalPadding: Style.spacing.sm
+                    verticalPadding: Style.spacing.controlPaddingY
+                    bordered: true
+                    tooltipText: "Shift+Del in the popup does the same"
+                    onClicked: root.requestClearFromSettings()
+                    onHovered: function(isHovered) { if (!isHovered && root.clearArmed) root.clearArmed = false }
+                  }
                 }
             }
           }
@@ -1981,56 +2164,69 @@ Item {
             Column {
               id: sec
               width: parent ? parent.width : 0
-              spacing: Style.space(2)
+              spacing: Style.space(14)
 
-                // Flux section (the footer phone button opens the view here).
+              // 1.32.0: what Nice Clipboard adds on top of Flux (approved text).
+              Column {
+                width: parent.width
+                spacing: Style.space(6)
                 Repeater {
                   model: [
-                    { icon: "󰄜", label: root.phoneOnline ? (root.phoneName || "Phone") : "No phone connected", value: root.fluxStatusText },
-                    { icon: "󰓦", label: "Last sync", value: ClipboardHistory.agoLabel(root.lastSync, root.nowSec) }
+                    { t: "Flux already shares your clipboard with your phone. Nice Clipboard adds:", dim: false },
+                    { t: "•  Incognito pauses Flux too, so nothing you copy reaches your phone.", dim: false },
+                    { t: "•  Send any history item to your phone without changing your clipboard.", dim: false },
+                    { t: "•  Items that came from your phone are labelled 'From phone'.", dim: false },
+                    { t: "•  The phone button shows whether your phone is connected.", dim: false },
+                    { t: "While incognito is on, the whole phone link is paused, including notifications, files and sudo approvals.", dim: true }
                   ]
-                  delegate: infoValueRow
+                  Text {
+                    required property var modelData
+                    objectName: "fluxIntro"
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
+                    text: modelData.t
+                    color: modelData.dim ? root.dimText : root.foreground
+                    topPadding: modelData.dim ? Style.space(4) : 0
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
                 }
+              }
 
-                Rectangle {
-                  id: sendRow
-                  readonly property bool enabled: root.phoneOnline && !root.fluxPaused
+              PanelSeparator { width: parent.width; foreground: root.foreground }
+
+              Column {
+                width: parent.width
+                spacing: Style.space(10)
+                Column {
                   width: parent.width
-                  height: root.rowHeight
-                  radius: root.cornerRadius
-                  color: sendMouse.containsMouse && enabled ? Util.alpha(root.foreground, 0.08) : "transparent"
-                  opacity: enabled ? 1 : 0.5
-
-                  Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.space(10)
-                    anchors.verticalCenter: parent.verticalCenter
-                    textFormat: Text.PlainText
-                    text: "󰒊  Send current clipboard"
-                    color: root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                  }
-
-                  Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: Style.space(10)
-                    anchors.verticalCenter: parent.verticalCenter
-                    textFormat: Text.PlainText
-                    text: "Ctrl+S"
-                    color: root.dimText
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                  }
-
-                  MouseArea {
-                    id: sendMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: sendRow.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: root.sendCurrentClipboard()
+                  spacing: Style.space(2)
+                  Repeater {
+                    model: [
+                      { icon: "󰄜", label: root.phoneOnline ? (root.phoneName || "Phone") : "No phone connected", value: root.fluxStatusText },
+                      { icon: "󰓦", label: "Last sync", value: ClipboardHistory.agoLabel(root.lastSync, root.nowSec) }
+                    ]
+                    delegate: infoValueRow
                   }
                 }
+                Button {
+                  id: sendRow
+                  objectName: "fluxSendButton"
+                  readonly property bool canSend: root.phoneOnline && !root.fluxPaused
+                  text: "Send current clipboard  ·  Ctrl+S"
+                  iconText: "󰒊"
+                  opacity: canSend ? 1 : 0.5
+                  fontSize: Style.font.body
+                  iconSize: Style.font.body
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  horizontalPadding: Style.spacing.sm
+                  verticalPadding: Style.spacing.controlPaddingY
+                  bordered: true
+                  onClicked: if (canSend) root.sendCurrentClipboard()
+                }
+              }
             }
           }
 
@@ -2053,7 +2249,6 @@ Item {
                 width: parent.width
                 spacing: Style.space(10)
                 PanelSectionHeader {
-                  x: Style.space(10)
                   text: "Installed languages"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
@@ -2061,8 +2256,7 @@ Item {
                 Text {
                   objectName: "clipOcrNone"
                   visible: sec.installedRows.length === 0
-                  x: Style.space(10)
-                  width: parent.width - Style.space(20)
+                  width: parent.width
                   wrapMode: Text.WordWrap
                   textFormat: Text.PlainText
                   text: "None: tesseract is not installed (sudo pacman -S tesseract tesseract-data-eng)."
@@ -2084,12 +2278,12 @@ Item {
                       width: parent.width
                       height: root.rowHeight
                       radius: root.cornerRadius
-                      color: langMouse.containsMouse ? Util.alpha(root.foreground, 0.05) : "transparent"
+                      color: "transparent"
                       MouseArea { id: langMouse; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
 
                       Text {
                         anchors.left: parent.left
-                        anchors.leftMargin: Style.space(10)
+                        anchors.leftMargin: 0
                         anchors.verticalCenter: parent.verticalCenter
                         textFormat: Text.PlainText
                         text: langRow.modelData.name
@@ -2099,7 +2293,7 @@ Item {
                       }
                       Row {
                         anchors.right: parent.right
-                        anchors.rightMargin: Style.space(10)
+                        anchors.rightMargin: 0
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Style.space(14)
                         Text {
@@ -2109,7 +2303,7 @@ Item {
                           text: langRow.modelData.size
                           color: root.dimText
                           font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
+                          font.pixelSize: Style.font.bodySmall
                         }
                         // In use: the stock-looking switch from the
                         // incognito row; clicking it switches the language.
@@ -2127,7 +2321,7 @@ Item {
                             text: "in use"
                             color: root.dimText
                             font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
+                            font.pixelSize: Style.font.bodySmall
                           }
                           SwitchTrack {
                             id: useSwitch
@@ -2167,7 +2361,7 @@ Item {
                           text: langRow.modelData.protect
                           color: root.dimText
                           font.family: root.fontFamily
-                          font.pixelSize: Style.font.caption
+                          font.pixelSize: Style.font.bodySmall
                         }
                       }
                     }
@@ -2176,8 +2370,7 @@ Item {
                 Text {
                   objectName: "clipOcrUseNote"
                   visible: sec.installedRows.length > 0
-                  x: Style.space(10)
-                  width: parent.width - Style.space(20)
+                  width: parent.width
                   wrapMode: Text.WordWrap
                   textFormat: Text.PlainText
                   text: root.ocrInfo.env
@@ -2185,7 +2378,7 @@ Item {
                     : "Screenshots and images are read in every language that is in use (at least one stays on); each extra one makes reading a little slower. Sizes are the space on disk (pacman)."
                   color: root.dimText
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.bodySmall
                 }
               }
 
@@ -2198,8 +2391,7 @@ Item {
                     required property var modelData
                     objectName: "clipOcrSuggest"
                     readonly property string code: modelData.code
-                    x: Style.space(10)
-                    width: sec.width - Style.space(20)
+                    width: sec.width
                     spacing: Style.spacing.xs
                     topPadding: Style.space(6)
 
@@ -2255,28 +2447,25 @@ Item {
                 spacing: Style.space(10)
                 visible: sec.availableRows.length > 0
                 PanelSectionHeader {
-                  x: Style.space(10)
                   text: "Add language"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
                 }
                 Text {
                   objectName: "clipOcrHelp"
-                  x: Style.space(10)
-                  width: parent.width - Style.space(20)
+                  width: parent.width
                   wrapMode: Text.WordWrap
                   textFormat: Text.PlainText
                   text: "Click one to install it: a terminal opens, shows the command and asks for your password (official Arch package)."
                         + (Object.keys(root.ocrSizes).length ? " Sizes are the download (pacman)." : "")
                   color: root.dimText
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.bodySmall
                 }
                 Grid {
                   id: ocrLangGrid
                   objectName: "clipOcrLangGrid"
-                  x: Style.space(10)
-                  width: parent.width - Style.space(20)
+                  width: parent.width
                   columns: 3
                   spacing: Style.spacing.xs
                   readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
@@ -2318,8 +2507,7 @@ Item {
                 ]
                 delegate: Column {
                   required property var modelData
-                  x: Style.space(10)
-                  width: sec.width - Style.space(20)
+                  width: sec.width
                   spacing: Style.space(6)
                   bottomPadding: Style.space(8)
                   // Armed: red under the button, so it stays red while hovered
@@ -2359,7 +2547,7 @@ Item {
                     text: modelData.text
                     color: root.dimText
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+                    font.pixelSize: Style.font.bodySmall
                   }
                 }
               }
@@ -2392,27 +2580,17 @@ Item {
 
                 Repeater {
                   model: [
-                    { key: "globalKeys", label: "󰌌  Global shortcuts (Alt+V, Alt+Shift+1…9, 0): " + (root.globalKeys ? "on" : "off"), value: "", hint: "" }
+                    { key: "globalKeys", label: "System-wide shortcuts", on: root.globalKeys,
+                      hint: "Alt+V and Alt+Shift+1–0 from any app. Keys your Hyprland config already uses are left alone.",
+                      status: root.globalKeys ? (root.globalKeysInfo.text || "Checking…") : "" }
                   ]
-                  delegate: infoActionRow
+                  delegate: settingSwitchRow
                 }
-                Text {
-                  objectName: "globalKeysStatus"
-                  x: Style.space(10)
-                  bottomPadding: Style.space(8)
-                  width: parent.width - Style.space(20)
-                  visible: text !== ""
-                  wrapMode: Text.Wrap
-                  textFormat: Text.PlainText
-                  text: root.globalKeys ? (root.globalKeysInfo.text || "Checking…") : "Off: Nice Clipboard adds no keys. Keys from your own Hyprland config still work."
-                  color: root.dimText
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
+                Item { width: 1; height: Style.space(12) }
                 Repeater {
                   model: [
                     { icon: "󰅍", label: "Open clipboard", value: "Alt+V · Super+Ctrl+V" },
-                    { icon: "󰐃", label: "Paste slot N: pinned items, then the newest history items", value: "Alt+Shift+1…9, 0" },
+                    { icon: "󰐃", label: "Paste slot N: pins first, then the newest items", value: "Alt+Shift+1–0" },
                     { icon: "󰒆", label: "Paste queue: pick rows, then paste in order", value: "Ctrl+click · Ctrl+Enter" }
                   ]
                   delegate: infoValueRow
@@ -2431,8 +2609,7 @@ Item {
                 BorderSurface {
                   id: feedbackBox
                   objectName: "feedbackBox"
-                  x: Style.space(10)
-                  width: parent.width - Style.space(20)
+                  width: parent.width
                   height: Math.max(root.rowHeight * 2, feedbackInput.contentHeight + Style.space(8))
                   color: searchBox.color
                   borderSpec: searchBox.spec
@@ -2480,7 +2657,7 @@ Item {
 
                   Text {
                     anchors.left: parent.left
-                    anchors.leftMargin: Style.space(10)
+                    anchors.leftMargin: 0
                     anchors.verticalCenter: parent.verticalCenter
                     text: "󰆈  Send feedback"
                     color: root.foreground
@@ -2489,13 +2666,13 @@ Item {
                   }
                   Text {
                     anchors.right: parent.right
-                    anchors.rightMargin: Style.space(10)
+                    anchors.rightMargin: 0
                     anchors.verticalCenter: parent.verticalCenter
                     textFormat: Text.PlainText
                     text: "Enter sends · Shift+Enter: new line"
                     color: root.dimText
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+                    font.pixelSize: Style.font.bodySmall
                     visible: parent.width > Style.space(420)
                   }
                   MouseArea {
@@ -2512,8 +2689,7 @@ Item {
                 Row {
                   objectName: "feedbackNoteRow"
                   visible: root.feedbackNote !== ""
-                  x: Style.space(10)
-                  width: parent.width - Style.space(20)
+                  width: parent.width
                   spacing: Style.space(6)
                   topPadding: Style.space(2)
                   Text {
@@ -2540,61 +2716,74 @@ Item {
             }
           }
 
-          // Clickable settings row (incognito, clear history): icon + label,
-          // shortcut hint right, stock hover/cursor fill.
+          // 1.32.0: a setting with an Omarchy ToggleSwitch on the right (the
+          // switch owns the click, the row is not a button): label, a short
+          // hint, and an optional status line.
           Component {
-            id: infoActionRow
-            Rectangle {
+            id: settingSwitchRow
+            Item {
+              id: swRow
               required property var modelData
-              required property int index
+              objectName: "settingSwitchRow"
               width: parent ? parent.width : 0
-              height: root.rowHeight
-              radius: root.cornerRadius
-              color: infoRowMouse.containsMouse ? Util.alpha(root.foreground, 0.08) : "transparent"
+              height: Math.max(swLabels.implicitHeight, swToggle.height)
 
-              Text {
+              Column {
+                id: swLabels
                 anchors.left: parent.left
-                anchors.leftMargin: Style.space(10)
+                anchors.right: swToggle.left
+                anchors.rightMargin: Style.space(16)
                 anchors.verticalCenter: parent.verticalCenter
-                textFormat: Text.PlainText
-                text: parent.modelData.label
-                color: parent.modelData.key === "incognito" && root.privateMode ? root.accent : root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-              }
-
-              Row {
-                anchors.right: parent.right
-                anchors.rightMargin: Style.space(10)
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(10)
-
+                spacing: Style.space(3)
                 Text {
-                  anchors.verticalCenter: parent.verticalCenter
+                  objectName: "settingSwitchLabel"
+                  width: parent.width
                   textFormat: Text.PlainText
-                  text: parent.parent.modelData.hint
-                  color: root.dimText
+                  text: swRow.modelData.label
+                  color: swRow.modelData.accent && swRow.modelData.on ? root.accent : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
+                  font.bold: true
+                  elide: Text.ElideRight
                 }
-
-                SwitchTrack {
-                  visible: parent.parent.modelData.key === "incognito"
-                  anchors.verticalCenter: parent.verticalCenter
-                  on: root.privateMode
-                  accent: root.accent; foreground: root.foreground; background: root.background
+                Text {
+                  objectName: "settingSwitchHint"
+                  width: parent.width
+                  visible: text !== ""
+                  wrapMode: Text.Wrap
+                  textFormat: Text.PlainText
+                  text: swRow.modelData.hint || ""
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+                Text {
+                  objectName: "settingSwitchStatus"
+                  width: parent.width
+                  visible: text !== ""
+                  wrapMode: Text.Wrap
+                  textFormat: Text.PlainText
+                  text: swRow.modelData.status || ""
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
                 }
               }
 
-              MouseArea {
-                id: infoRowMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.runSettingsAction(parent.modelData.key)
+              ToggleSwitch {
+                id: swToggle
+                objectName: "settingSwitch"
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                checked: swRow.modelData.on
+                cursorRing: false
+                foreground: root.foreground
+                accent: root.accent
+                onToggled: root.runSettingsAction(swRow.modelData.key)
               }
             }
           }
+
           // Read-only settings row, styled like a list row (icon + label, value right).
           Component {
             id: infoValueRow
@@ -2605,9 +2794,9 @@ Item {
 
               Text {
                 anchors.left: parent.left
-                anchors.leftMargin: Style.space(10)
+                anchors.leftMargin: 0
                 anchors.right: valueText.left
-                anchors.rightMargin: Style.space(10)
+                anchors.rightMargin: 0
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
                 text: parent.modelData.icon + "  " + parent.modelData.label
@@ -2620,7 +2809,7 @@ Item {
               Text {
                 id: valueText
                 anchors.right: parent.right
-                anchors.rightMargin: Style.space(10)
+                anchors.rightMargin: 0
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
                 text: parent.modelData.value
@@ -2922,10 +3111,14 @@ Item {
 
                   readonly property bool hasCursor: root.cursorActive && (root.dragRow >= 0 && root.dragHistoryIndex >= 0 ? historyIndex === root.dragHistoryIndex : index === root.selectedIndex)
                   readonly property bool armed: root.armedDeleteIndex !== -1 && historyIndex === root.armedDeleteIndex
-                  readonly property bool showActions: hasCursor || rowMouse.containsMouse
+                  readonly property bool showActions: (hasCursor || rowMouse.containsMouse) && !editing
+                  // 1.32.0: edit mode (text items): the row grows to show the
+                  // whole text in a field, with a check button to save.
+                  readonly property bool editing: root.editOrig !== "" && entryType === "text" && historyIndex >= 0 && historyIndex < root.history.length && root.history[historyIndex].text === root.editOrig
+                  onEditingChanged: if (editing) { editField.text = root.editOrig; editField.cursorPosition = editField.length; Qt.callLater(function() { editField.forceActiveFocus() }) }
 
                   width: ListView.view.width
-                  height: root.rowHeight
+                  height: editing ? Math.min(Math.max(root.rowHeight, editField.contentHeight + Style.spacing.controlPaddingY * 2 + Style.space(8)), Math.round(ListView.view.height * 0.7)) : root.rowHeight
                   objectName: "clipRow"
                   foreground: root.foreground
                   accent: root.accent
@@ -2946,6 +3139,7 @@ Item {
                   MouseArea {
                     id: rowMouse
                     anchors.fill: parent
+                    enabled: !row.editing
                     hoverEnabled: true
                     cursorShape: root.dragRow === row.index && root.dragMoved ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                     // Pinned rows: the press belongs to the row (drag = reorder),
@@ -3003,8 +3197,88 @@ Item {
                     }
                   }
 
+                  // Edit field: stock text field look (TextField: control fill,
+                  // normal border, focus border), whole text, wraps; Enter
+                  // saves, Shift+Enter is a new line, Esc cancels.
+                  Item {
+                    objectName: "clipEditBox"
+                    visible: row.editing
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.space(6)
+                    anchors.rightMargin: Style.space(6)
+                    anchors.topMargin: Style.space(4)
+                    anchors.bottomMargin: Style.space(4)
+
+                    BorderSurface {
+                      id: editSurface
+                      anchors.left: parent.left
+                      anchors.right: editSave.left
+                      anchors.rightMargin: Style.space(6)
+                      anchors.top: parent.top
+                      anchors.bottom: parent.bottom
+                      radius: Style.cornerRadius
+                      color: Util.alpha(root.foreground, 0.12)
+                      borderSpec: Border.controlSpec(editField.activeFocus ? "focus" : "normal", root.foreground, root.accent)
+
+                      Flickable {
+                        id: editFlick
+                        anchors.fill: parent
+                        anchors.leftMargin: Style.spacing.controlPaddingX
+                        anchors.rightMargin: Style.spacing.controlPaddingX
+                        anchors.topMargin: Style.spacing.controlPaddingY
+                        anchors.bottomMargin: Style.spacing.controlPaddingY
+                        clip: true
+                        contentWidth: width
+                        contentHeight: editField.contentHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        function ensureVisible(r) {
+                          if (contentY >= r.y) contentY = r.y
+                          else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
+                        }
+
+                        TextEdit {
+                          id: editField
+                          objectName: "clipEditField"
+                          width: editFlick.width
+                          wrapMode: TextEdit.Wrap
+                          textFormat: TextEdit.PlainText
+                          selectByMouse: true
+                          color: root.foreground
+                          selectionColor: root.selectedBackground
+                          selectedTextColor: root.selectedText
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.body
+                          onCursorRectangleChanged: editFlick.ensureVisible(cursorRectangle)
+                          Keys.onPressed: function(event) {
+                            var a = ClipboardHistory.editKeyAction(event.key, (event.modifiers & Qt.ShiftModifier) !== 0)
+                            if (a === "save") root.saveEdit(editField.text)
+                            else if (a === "cancel") root.cancelEdit()
+                            else if (a === "newline") editField.insert(editField.cursorPosition, "\n")
+                            else return
+                            event.accepted = true
+                          }
+                        }
+                      }
+                    }
+
+                    PanelActionButton {
+                      id: editSave
+                      objectName: "clipEditSave"
+                      anchors.right: parent.right
+                      anchors.top: parent.top
+                      iconText: "󰄬"
+                      tooltipText: "Save (Enter) · Esc cancels"
+                      fontFamily: root.fontFamily
+                      fontSize: Style.font.subtitle
+                      foreground: root.accent
+                      hoverColor: root.accent
+                      onClicked: root.saveEdit(editField.text)
+                    }
+                  }
+
                   Row {
                     id: rowContent
+                    visible: !row.editing
                     anchors.fill: parent
                     anchors.leftMargin: Style.space(10)
                     anchors.rightMargin: Style.space(10)
@@ -3127,6 +3401,7 @@ Item {
 
                       Repeater {
                         model: [
+                          { glyph: "󰏫", tip: "edit", show: row.showActions && row.entryType === "text", text: "Edit" },
                           { glyph: "󰄜", tip: "send", show: row.showActions && root.phoneOnline && row.entryType === "text", text: "Send via Flux" },
                           { glyph: row.armed ? "󰄬" : "󰩺", tip: "delete", show: row.showActions || row.armed, text: row.armed ? "Click again to delete" : "Delete" },
                           { glyph: row.pinned ? "󰐃" : "󰤱", tip: "pin", show: (row.showActions || row.pinned), text: row.pinned ? "Unpin" : "Pin" }
@@ -3469,14 +3744,14 @@ Item {
   property var settingsPaneFlickRef: null
   property int settingsSection: 0
   readonly property var settingsSections: [
-    { key: "general", icon: "󰒓", label: "General", desc: "Incognito and what a click on an item does.", comp: secGeneral },
-    { key: "history", icon: "󰋚", label: "History", desc: "How long items are kept, and clearing the history. Pinned items always stay.", comp: secHistory },
-    { key: "flux", icon: "󰄜", label: "Flux (phone)", desc: "Clipboard sync with your phone through Flux.", comp: secFlux },
-    { key: "ocr", icon: "󰗊", label: "Text recognition (OCR)", title: "Languages for text recognition (OCR)", desc: "Languages used to read text in screenshots and images: switch them on or off, remove them, or add new ones.", comp: secOcr },
-    { key: "filters", icon: "󰍉", label: "Search filters", desc: "Type these in the search field; combine them with text, e.g. type:link github.", comp: secFilters },
+    { key: "general", icon: "󰒓", label: "General", desc: "Incognito, left click and updates.", comp: secGeneral },
+    { key: "history", icon: "󰋚", label: "History", desc: "How long items are kept. Pins always stay.", comp: secHistory },
+    { key: "flux", icon: "󰄜", label: "Phone (Flux)", desc: "Your clipboard on your phone, through Flux.", comp: secFlux },
+    { key: "ocr", icon: "󰗊", label: "Text recognition (OCR)", title: "Languages for text recognition (OCR)", desc: "Languages for reading text in images: turn on, off, remove or add.", comp: secOcr },
+    { key: "filters", icon: "󰍉", label: "Search filters", desc: "Type in the search field, mix with text: type:link github.", comp: secFilters },
     { key: "shortcuts", icon: "󰌌", label: "Shortcuts", desc: "Keys in the popup and everywhere.", comp: secShortcuts },
     { key: "feedback", icon: "󰆈", label: "Feedback", desc: "Send feedback straight to the developer from here, or check out the <a href=\"https://github.com/roehrbacher/Nice-Clipboard\">GitHub page</a>.", comp: secFeedback },
-    { key: "uninstall", icon: "󰆴", label: "Uninstall", desc: "Remove Nice Clipboard from this computer. A terminal shows every command before anything runs.", comp: secUninstall }
+    { key: "uninstall", icon: "󰆴", label: "Uninstall", desc: "A terminal shows every command before anything runs.", comp: secUninstall }
   ]
   function showSettingsSection(i) {
     var n = root.settingsSections.length

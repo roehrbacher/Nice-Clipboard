@@ -109,7 +109,7 @@ ShellRoot {
       win2.width = 940
       clip.showSettingsSection(0)
       Qt.callLater(function() {
-        console.log("V130 update status: '" + inWin("updateCheckStatus")[0].text + "'")
+        console.log("V130 update status: '" + inWin("settingSwitchStatus")[1].text + "'")
         win2.contentItem.grabToImage(function(r2) { if (pngDir) r2.saveToFile(pngDir + "/window-general-update.png"); tEnd.start() })
       })
     })

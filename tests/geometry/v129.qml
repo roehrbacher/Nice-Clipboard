@@ -130,7 +130,7 @@ ShellRoot {
     })
   }
   function step7() {
-    var gs = inWin("globalKeysStatus")
+    var gs = inWin("settingSwitchStatus")
     console.log("V129 instances in window: paneLoader=" + inWin("settingsPaneLoader").length + " content=" + inWin("settingsWindowContent").length + " feedbackInput=" + inWin("feedbackInput").length)
     console.log("V129 shortcuts status: on=" + clip.globalKeys + " '" + (gs.length ? gs[0].text : "missing") + "'")
     win2.contentItem.grabToImage(function(r) {

@@ -91,7 +91,7 @@ ShellRoot {
   function step3() {
     var d = inWin("settingsPaneDesc")[0]
     console.log("V131 subtitle: px=" + d.font.pixelSize + " (Style.font.bodySmall=" + Style.font.bodySmall + ", caption=" + Style.font.caption + ") color=" + d.color)
-    console.log("V131 incognito hint: '" + inWin("incognitoHint")[0].text + "'")
+    console.log("V131 incognito hint: '" + inWin("settingSwitchHint")[0].text + "'")
     png(win2, "window-general.png", function() {
       section("history")
       Qt.callLater(function() {

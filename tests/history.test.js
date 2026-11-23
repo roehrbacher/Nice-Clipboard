@@ -165,10 +165,10 @@ assert.strictEqual(H.kineticFlickVelocity(2600, 200), 0, "fingers stopped before
 assert.strictEqual(H.kineticFlickVelocity(100, 10), 0, "slow drag: no flick")
 
 // 1.4.0: action order phone, trash, pin (pin rightmost, never moves)
-assert.deepStrictEqual(H.rowActionNames(false, true, true), ["send", "delete", "pin"])
-assert.deepStrictEqual(H.rowActionNames(false, false, true), ["delete", "pin"], "no phone: no send")
+assert.deepStrictEqual(H.rowActionNames(false, true, true), ["edit", "send", "delete", "pin"], "1.32.0: edit first")
+assert.deepStrictEqual(H.rowActionNames(false, false, true), ["edit", "delete", "pin"], "no phone: no send")
 assert.deepStrictEqual(H.rowActionNames(false, true, false), ["delete", "pin"], "images are not sent")
-assert.deepStrictEqual(H.rowActionNames(true, true, true), ["send", "delete", "pin"], "1.31.0: armed delete keeps the buttons in place")
+assert.deepStrictEqual(H.rowActionNames(true, true, true), ["edit", "send", "delete", "pin"], "1.31.0: armed delete keeps the buttons in place")
 
 // 1.3.2: row actions by keyboard
 {
@@ -248,9 +248,9 @@ console.log("headings: ok")
     assert.strictEqual(L(f), null, "not a link: " + f)
   for (const f of ["", "hello world", "https://x.com\nmore", "look at example.com", "user@host", "www.com", "ftp://x.com", "@x.com"])
     assert.strictEqual(L(f), null, "not a link: " + JSON.stringify(f))
-  assert.deepStrictEqual(H.rowActionNames(false, true, true, "url"), ["link", "send", "delete", "pin"], "link button first (left)")
-  assert.deepStrictEqual(H.rowActionNames(false, false, true, ""), ["delete", "pin"])
-  assert.deepStrictEqual(H.rowActionNames(true, true, true, "url"), ["link", "send", "delete", "pin"], "1.31.0: armed keeps all")
+  assert.deepStrictEqual(H.rowActionNames(false, true, true, "url"), ["link", "edit", "send", "delete", "pin"], "link button first (left)")
+  assert.deepStrictEqual(H.rowActionNames(false, false, true, ""), ["edit", "delete", "pin"])
+  assert.deepStrictEqual(H.rowActionNames(true, true, true, "url"), ["link", "edit", "send", "delete", "pin"], "1.31.0: armed keeps all")
   console.log("links: ok")
 }
 
@@ -475,7 +475,7 @@ console.log("filters/ocr: ok")}
   assert.strictEqual(H.normalizeEntry({ type: "text", text: "x", html: "a".repeat(300000) }).html, undefined, "oversized html dropped")
   const rows = H.displayRows(m, "", 10)
   assert.strictEqual(rows[0].hasMarkdown, true, "row flag")
-  assert.deepStrictEqual(H.rowActionNames(false, false, true, "", false, true), ["markdown", "plaintext", "delete", "pin"], "markdown button")
+  assert.deepStrictEqual(H.rowActionNames(false, false, true, "", false, true), ["markdown", "plaintext", "edit", "delete", "pin"], "markdown button")
 
   let q = []
   q = H.toggleQueued(q, "a"); q = H.toggleQueued(q, "b"); q = H.toggleQueued(q, "c")
@@ -681,10 +681,11 @@ console.log("filters/ocr: ok")}
 
   // 1.29.0: global shortcuts summary (global-keys.sh output)
   const gk = H.globalKeysSummary("Alt+V\ttaken\tClipboard history\n" + [1,2,3,4,5,6,7,8,9].map(n => "Alt+Shift+" + n + "\ttaken\tPaste pinned clipboard item " + n).join("\n") + "\nAlt+Shift+0\tbound\t\n")
-  assert.strictEqual(gk.text, "Active: Alt+Shift+0. Already bound in your Hyprland config, left alone: Alt+V, Alt+Shift+1…9")
+  assert.strictEqual(gk.text, "Active: Alt+Shift+0. Already bound in your Hyprland config, left alone: Alt+V, Alt+Shift+1–9")
   assert.strictEqual(H.globalKeysSummary("Alt+V\tours\t\nAlt+Shift+1\tbound\t\nAlt+Shift+2\tbound\t").text, "Active: Alt+V, Alt+Shift+1, 2")
   assert.deepStrictEqual(H.globalKeysSummary("all\terror\tHyprland did not answer").errors, ["Hyprland did not answer"])
   assert.strictEqual(H.keyLabels(["Alt+Shift+9", "Alt+Shift+0", "Alt+Shift+1"]), "Alt+Shift+1, 9, 0")
+  assert.strictEqual(H.keyLabels(["Alt+V"].concat([1,2,3,4,5,6,7,8,9,0].map(n => "Alt+Shift+" + n))), "Alt+V, Alt+Shift+1–0", "1.32.0: all ten read 1–0")
 
   // 1.29.0: feedback sent wording, dev demo banner
   assert.strictEqual(H.feedbackResult(0, '{"ok":true}').note, "Feedback sent, thanks! Timon reads every message.")
@@ -759,4 +760,37 @@ console.log("filters/ocr: ok")}
   assert.deepStrictEqual(un.slice(3), ["/p/uninstall.sh", "--languages"]); assert.ok(un[2].includes("org.omarchy.terminal"))
   assert.deepStrictEqual(H.uninstallArgv("/p/uninstall.sh", false).slice(3), ["/p/uninstall.sh"])
   console.log("ok 1.31.0 undo delete, OCR language rows, uninstall argv")
+}
+
+// 1.32.0: edit, left click options, clear count, hero meta, phone quarantine
+{
+  const h = [{ type: "text", text: "a", pinned: true, ts: 1 }, { type: "text", text: "b", ts: 2, html: "<b>b</b>" }, { type: "image", path: "/x.png" }]
+  let r = H.editEntryText(h, "b", "b2")
+  assert.strictEqual(r.changed, true); assert.strictEqual(r.index, 1)
+  assert.deepStrictEqual(r.history[1], { type: "text", text: "b2", ts: 2 }, "same place and time, html dropped")
+  assert.strictEqual(h[1].text, "b", "input not mutated")
+  r = H.editEntryText(h, "a", "a\nline2"); assert.strictEqual(r.history[0].pinned, true, "pin kept"); assert.strictEqual(r.history[0].text, "a\nline2")
+  assert.strictEqual(H.editEntryText(h, "b", "   ").changed, false, "empty text is not saved")
+  assert.strictEqual(H.editEntryText(h, "b", "b").changed, false, "unchanged")
+  assert.strictEqual(H.editEntryText(h, "zzz", "q").changed, false, "gone")
+  r = H.editEntryText([{ type: "text", text: "x" }, { type: "text", text: "y" }], "y", "x")
+  assert.deepStrictEqual(r.history.map(e => e.text), ["x"], "duplicate of the new text merges"); assert.strictEqual(r.index, 0)
+  assert.strictEqual(H.editKeyAction(H.KEY.Return, false), "save")
+  assert.strictEqual(H.editKeyAction(H.KEY.Return, true), "newline")
+  assert.strictEqual(H.editKeyAction(H.KEY.Escape, false), "cancel")
+  assert.strictEqual(H.editKeyAction(65, false), "")
+  assert.strictEqual(H.clickActionOf("copy"), "copy"); assert.strictEqual(H.clickActionOf("pasteKeep"), "pasteKeep")
+  assert.strictEqual(H.clickActionOf(undefined), "paste", "new installs: copy, paste and close"); assert.strictEqual(H.clickActionOf("paste"), "paste")
+  assert.strictEqual(H.CLICK_OPTIONS.map(o => o.label).join("|"), "Copy only|Copy, paste and close|Copy, paste and keep open")
+  assert.ok(H.clickExplain("pasteKeep").length > 0)
+  assert.strictEqual(H.clearHistoryLabel(3), "Clear history: delete 3 items (pins stay)")
+  assert.strictEqual(H.clearHistoryLabel(1), "Clear history: delete 1 item (pins stay)")
+  assert.strictEqual(H.clearHistoryLabel(0), "Clear history (nothing to delete, pins stay)")
+  assert.strictEqual(H.heroMetaLabel(54, 3), "54 items · 3 pinned"); assert.strictEqual(H.heroMetaLabel(1, 0), "1 item")
+  assert.strictEqual(H.fluxQuarantineActive(0, 0, 1000), false, "never paused")
+  assert.strictEqual(H.fluxQuarantineActive(1000, 0, 2000), true, "resumed, phone not back yet")
+  assert.strictEqual(H.fluxQuarantineActive(1000, 3000, 7000), true, "phone back < 5 s ago")
+  assert.strictEqual(H.fluxQuarantineActive(1000, 3000, 9000), false, "phone back > 5 s ago")
+  assert.strictEqual(H.fluxQuarantineActive(1000, 0, 1000 + 600001), false, "10 min cap")
+  console.log("1.32.0: ok")
 }

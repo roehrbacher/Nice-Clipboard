@@ -6,13 +6,16 @@
 #             OCR sizes, sidebar GitHub link, feedback note at 940 and 620 px
 #   v131.qml  1.31.0: delete arm/confirm, Ctrl+Z undo, General / History /
 #             Text recognition / Uninstall pages
+#   v132.qml  1.32.0: popup header next to the stock PanelHero, edit mode,
+#             "paste and keep open", General / History / Phone / Shortcuts,
+#             subtitle sizes, phone quarantine after incognito
 # clipboard.sh, queue.sh, global-keys.sh, update-check.sh, wl-copy, the
 # notifiers, xdg-open and the terminal launcher are stubs that only log;
 # feedback goes to a local fake Worker; temp data dir, no watchers, hard
 # timeout. Nothing is installed, removed, sent or pasted.
-#   bash tests/geometry/run-harness.sh v129|v130|v131 [png dir]
+#   bash tests/geometry/run-harness.sh v129|v130|v131|v132 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."
@@ -32,6 +35,10 @@ cat > "$tmp/clip/scan.sh" <<'SH'
 [[ $1 == --langs ]] || exit 0
 echo '{"installed":["deu","eng","ita","spa"],"used":"eng+deu+ita+spa","env":"","hints":["en_US.UTF-8","kb:de"]}'
 SH
+# Never the real Flux: flux-pause.sh is a stub that logs (the real one stops
+# and starts fluxd.service), and systemctl is a logging stub as well.
+printf '#!/bin/bash\necho "$*" >> "%s/fluxpause"\ncase $1 in pause) echo paused;; *) echo running;; esac\n' "$tmp" > "$tmp/clip/flux-pause.sh"
+printf '#!/bin/bash\necho "$*" >> "%s/systemctl"\nexit 0\n' "$tmp" > "$tmp/bin/systemctl"
 # Never GitHub from tests: the update check is a stub that logs.
 printf '#!/bin/bash\necho call >> "%s/updatecheck"\necho '"'"'{"latest":"99.0.0","git":false}'"'"'\n' "$tmp" > "$tmp/clip/update-check.sh"
 printf '#!/bin/bash\necho "$*" >> "%s/helper"\n[[ $1 == current ]] && echo empty\nexit 0\n' "$tmp" > "$tmp/clip/clipboard.sh"; chmod +x "$tmp/clip/"*.sh
@@ -73,6 +80,7 @@ echo "$tag fake Worker got: $(cat "$tmp/posted" 2>/dev/null)"
 echo "$tag update-check.sh calls: $(grep -c call "$tmp/updatecheck" 2>/dev/null || echo 0)"
 echo "$tag global-keys.sh calls: $(tr "\n" ";" 2>/dev/null < "$tmp/globalkeys")"
 echo "$tag terminal launches: $(sed "s#$tmp#TMP#g" "$tmp/install" 2>/dev/null | tr "\n" ";")"
+echo "$tag flux-pause.sh calls: $(tr "\n" ";" 2>/dev/null < "$tmp/fluxpause") systemctl calls: $(tr "\n" ";" 2>/dev/null < "$tmp/systemctl")"
 echo "$tag xdg-open calls: $(tr "\n" ";" 2>/dev/null < "$tmp/xdgopen")"
 echo "$tag state.json: $(cat "$tmp/data/timon.clipboard/state.json" 2>/dev/null)"
 if [[ -n ${1:-} ]]; then mkdir -p "$1"; cp "$tmp"/png/*.png "$1"/ 2>/dev/null; echo "$tag PNGs: $(cd "$1" && command ls *.png 2>/dev/null | tr "\n" " ")"; fi

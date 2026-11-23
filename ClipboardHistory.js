@@ -708,7 +708,78 @@ function toggleOcrOff(off, code, installed) {
 // ---- click action (1.18.0) ------------------------------------------------
 // "paste": select, paste and close (default). "copy": put it on the
 // clipboard, popup stays open.
-function clickActionOf(v) { return v === "copy" ? "copy" : "paste" }
+// 1.32.0: a third choice, "pasteKeep": paste into the window you were in,
+// then the popup comes back. Saved values from before ("copy", "paste")
+// keep their meaning; anything unknown is the default, "paste".
+function clickActionOf(v) { return v === "copy" || v === "pasteKeep" ? v : "paste" }
+var CLICK_OPTIONS = [
+  { key: "copy", label: "Copy only", explain: "Puts the item on the clipboard and leaves the popup open. Paste it yourself with Ctrl+V." },
+  { key: "paste", label: "Copy, paste and close", explain: "Pastes the item into the window you were in and closes the popup." },
+  { key: "pasteKeep", label: "Copy, paste and keep open", explain: "Pastes the item into the window you were in, then the popup opens again for the next one." }
+]
+function clickExplain(key) {
+  var k = clickActionOf(key)
+  for (var i = 0; i < CLICK_OPTIONS.length; i++) if (CLICK_OPTIONS[i].key === k) return CLICK_OPTIONS[i].explain
+  return ""
+}
+
+// 1.32.0: edit a text item in place. It keeps its pin, its place and its
+// time; the browser HTML that came with it is dropped (it no longer matches).
+// Another unpinned item with the new text goes, so a text is listed once.
+// Empty text = nothing changes.
+function editEntryText(history, oldText, newText) {
+  var values = Array.isArray(history) ? history.slice() : []
+  var t = String(newText === undefined || newText === null ? "" : newText)
+  var idx = -1
+  for (var i = 0; i < values.length; i++) if (values[i] && values[i].type === "text" && values[i].text === oldText) { idx = i; break }
+  if (idx < 0 || t.trim().length === 0 || t === oldText) return { history: values, index: idx, changed: false }
+  var e = {}
+  for (var k in values[idx]) e[k] = values[idx][k]
+  e.text = t
+  delete e.html
+  values[idx] = e
+  for (var j = values.length - 1; j >= 0; j--) {
+    if (j !== idx && values[j] && values[j].type === "text" && values[j].text === t && values[j].pinned !== true) {
+      values.splice(j, 1)
+      if (j < idx) idx--
+    }
+  }
+  return { history: values, index: idx, changed: true }
+}
+// Keys in the edit field: Enter saves, Shift+Enter is a new line, Esc cancels.
+function editKeyAction(key, shift) {
+  if (key === KEY.Escape) return "cancel"
+  if (key === KEY.Return || key === KEY.Enter) return shift ? "newline" : "save"
+  return ""
+}
+
+// 1.32.0: the caps line under the popup title, like the stock hero meta
+// ("CONNECTED"): "54 items · 3 pinned".
+function heroMetaLabel(total, pinned) {
+  var n = Math.max(0, Number(total) || 0), p = Math.max(0, Number(pinned) || 0)
+  var out = n === 1 ? "1 item" : n + " items"
+  return p > 0 ? out + " · " + p + " pinned" : out
+}
+
+// 1.32.0: Settings > History > Clear history, counting unpinned items only.
+function clearHistoryLabel(n) {
+  var c = Math.max(0, Number(n) || 0)
+  if (c === 0) return "Clear history (nothing to delete, pins stay)"
+  return "Clear history: delete " + c + (c === 1 ? " item" : " items") + " (pins stay)"
+}
+
+// 1.32.0: items the phone queued while incognito paused Flux arrive right
+// after Flux starts again (the phone sends them as soon as it reconnects).
+// From the resume until 5 s after the phone is seen online again (at most
+// 10 minutes), text from the phone is dropped.
+var QUARANTINE_AFTER_ONLINE_MS = 5000
+var QUARANTINE_MAX_MS = 600000
+function fluxQuarantineActive(startMs, onlineMs, nowMs) {
+  if (!(startMs > 0)) return false
+  if (nowMs - startMs > QUARANTINE_MAX_MS) return false
+  if (onlineMs > 0 && nowMs - onlineMs > QUARANTINE_AFTER_ONLINE_MS) return false
+  return true
+}
 
 // ---- settings: search filter examples (1.18.0) ----------------------------
 var SEARCH_FILTER_EXAMPLES = [
@@ -1090,6 +1161,7 @@ function rowActionNames(armed, phoneOnline, isText, linkKind, hasCopyText, hasMa
   if (hasCopyText) out.push("copytext")
   if (hasOcr) out.push("ocrtext")
   if (hasMarkdown) { out.push("markdown"); out.push("plaintext") }
+  if (isText) out.push("edit")
   if (phoneOnline && isText) out.push("send")
   out.push("delete")
   out.push("pin")
@@ -1323,7 +1395,8 @@ function ocrDemoSuggestion(installed, code) {
            text: "Looks like you also use " + pick.name + " (demo banner). Install OCR for it?" }
 }
 // ---- global shortcuts from the plugin (1.29.0, global-keys.sh) -----------
-// "Alt+V", "Alt+Shift+1" … → "Alt+V, Alt+Shift+1…9, 0" (runs in 1…9, 0 order).
+// "Alt+V", "Alt+Shift+1" … → "Alt+V, Alt+Shift+1–0" (runs in 1–9, 0 order;
+// 1.32.0: an en dash, so all ten read "1–0").
 function keyLabels(labels) {
   var order = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], other = [], digits = []
   ;(labels || []).forEach(function(l) {
@@ -1335,7 +1408,7 @@ function keyLabels(labels) {
   while (i < digits.length) {
     var j = i
     while (j + 1 < digits.length && digits[j + 1] === digits[j] + 1) j++
-    parts.push(j - i >= 2 ? order[digits[i]] + "…" + order[digits[j]] : (j > i ? order[digits[i]] + ", " + order[digits[j]] : order[digits[i]]))
+    parts.push(j - i >= 2 ? order[digits[i]] + "–" + order[digits[j]] : (j > i ? order[digits[i]] + ", " + order[digits[j]] : order[digits[i]]))
     i = j + 1
   }
   if (parts.length) other.push("Alt+Shift+" + parts.join(", "))
@@ -1515,6 +1588,13 @@ if (typeof module !== "undefined") {
     updateHowTo: updateHowTo,
     OCR_LANGUAGES: OCR_LANGUAGES,
     SEARCH_FILTER_EXAMPLES: SEARCH_FILTER_EXAMPLES,
+    CLICK_OPTIONS: CLICK_OPTIONS,
+    clickExplain: clickExplain,
+    editEntryText: editEntryText,
+    editKeyAction: editKeyAction,
+    clearHistoryLabel: clearHistoryLabel,
+    heroMetaLabel: heroMetaLabel,
+    fluxQuarantineActive: fluxQuarantineActive,
     firstPinnedIndex: firstPinnedIndex,
     queueItemKeys: queueItemKeys,
     clipKeyOf: clipKeyOf,

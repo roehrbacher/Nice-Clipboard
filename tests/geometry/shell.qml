@@ -52,7 +52,7 @@ ShellRoot {
       wins = clip.children.slice ? clip.children.slice() : []; for (var k = 0; k < clip.children.length; k++) wins.push(clip.children[k]); console.log("GEO kids " + clip.children.length)
       var title = [], btn = [], list = [], rows = [], texts = [], acts = []
       for (var w = 0; w < wins.length; w++) {
-        find(wins[w], "headerTitle", title); find(wins[w], "searchButton", btn); find(wins[w], "resultList", list)
+        find(wins[w], "clipHero", title); find(wins[w], "searchButton", btn); find(wins[w], "resultList", list)
       }
       if (!list.length) { console.log("GEO nolist"); Qt.quit(); return }
       find(list[0], "clipRow", rows); find(list[0], "clipRowText", texts); 

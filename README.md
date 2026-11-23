@@ -6,7 +6,7 @@ A clipboard history for [Omarchy](https://omarchy.org) that looks like it ships 
 
 - **Flux integration:** send any item to your phone, see what came from it, and incognito pauses phone sync.
 - **Paste queue:** pick several items in order, then paste them one after another.
-- **Nice shortcuts:** Alt+V opens it, Alt+Shift+1…9, 0 pastes your pins and newest items from anywhere, everything works from the keyboard.
+- **Nice shortcuts:** Alt+V opens it, Alt+Shift+1–0 pastes your pins and newest items from anywhere, everything works from the keyboard.
 - **Screenshot text recognition (OCR):** copy the text out of any copied screenshot.
 - **QR code recognition:** open a QR link, or copy a Wi-Fi password straight from a QR code.
 - **Omarchy theme colours:** follows your current theme, popup sits under its bar icon.
@@ -47,15 +47,22 @@ imported once on first start. To hear about upstream changes, run
   click outside or open another bar popup to close),
   also when opened with Alt+V. Without the bar icon (bar widget not in the
   layout) it opens at the top-left corner. A compact list, no preview pane;
-  hover or select a row for its actions: phone (send), trash, pin.
+  hover or select a row for its actions: edit (text items), phone (send), trash, pin.
+- **Edit an item:** the pencil button on a text row turns the row into a
+  text field with the whole text (it grows to fit, then scrolls). Enter or
+  the check button saves into the same item (pin, place and copy time stay),
+  Shift+Enter adds a line, Esc cancels. The clipboard itself is not changed;
+  pick the item to paste the new text.
 - **Size:** the popup scales with the screen: full size from 1080 px logical
   height up, down to 85% on small laptop screens.
 - **Touchpad momentum:** a quick two-finger flick keeps the list scrolling
   after the fingers lift and slows down, like GTK apps and browsers. Mouse
   wheel notches scroll a fixed step.
-- **Count:** top right shows e.g. `119 items` (`4 of 119 items` while
-  searching).
-- **Header:** search field ("Search clipboard…"); the item count is on the Clear history button.
+- **Header:** like the stock Wi-Fi / Bluetooth / Display popups (their
+  `PanelHero` + `PanelSeparator`): the clipboard icon top left, "Clipboard"
+  in the title size, a caps line under it (`54 items · 3 pinned`, or
+  "Incognito · nothing is saved"), a divider to the list. The search button
+  sits on the right; while searching, the field takes the title's place.
 - **Footer (one row):** Clear history on the left; the Incognito switch, a
   phone button (only when Flux is installed) and a gear icon on the right.
   The phone button's icon and tooltip show the Flux state ("<phone> connected
@@ -64,7 +71,7 @@ imported once on first start. To hear about upstream changes, run
   window (about 900 × 650, tiled like Flux; the popup closes): a sidebar of
   sections (with "Settings" and the version on top) and one section at a time
   on the right, with its title and a short description: General (incognito,
-  click action, check for updates), History (delete after, clear), Flux (phone, last sync, "Send
+  what a left click does, check for updates), History (delete after, clear right there in the window), Phone (Flux) (what Nice Clipboard adds to Flux, phone, last sync, "Send
   current clipboard"), Text recognition (OCR) (its page: "Languages for text recognition (OCR)"), Search filters,
   Shortcuts, Feedback, and a GitHub link at the bottom of the sidebar. ↑ ↓ pick a section, Esc closes. Closing it any other
   way (Super+W, the window's close button) works too; the gear opens it again.
@@ -212,6 +219,14 @@ Nothing of Flux (binary, unit, config) is touched, so a Flux update cannot undo
 this. When fluxd starts again it records the current clipboard without sending
 it, so nothing copied during incognito reaches the phone.
 
+The other direction (1.32.0): the phone keeps what you send from it while
+fluxd is stopped and delivers it as soon as Flux is back (on the XPS: link up
+and the queued phone item in the same second). Flux can't be told to drop it,
+so after incognito ends, until 5 s after the phone is online again (at most
+10 minutes), new text is held until `flux-cli status` says where it came
+from: from the phone, it is not saved and the clipboard is cleared; anything
+else is saved as usual. Flux's own history still lists the phone item.
+
 - Flux is only started again if this plugin stopped it (marker file in
   `~/.local/state/timon.clipboard/`). If Flux was off already, or you ran
   `flux-cli off` meanwhile, it stays off.
@@ -242,7 +257,7 @@ older names `togglePrivate` and `setPrivateMode` still work.
 | Super+Shift+V | the same (GNOME default key, optional binding) |
 | Super+Ctrl+V | the same (stock Omarchy key, routed to this plugin) |
 | **Super+Shift+Ctrl+V** | incognito on/off from anywhere (with a notification) |
-| Alt+Shift+1…9, 0 | (added by the plugin, see Install) paste slot 1…10 from anywhere: your pinned items first (in their order), then the newest history items fill the rest. With 4 pins, Alt+Shift+5 is the newest history item and Alt+Shift+0 the 6th. (runs `paste-slot.sh`; closes the popup first if it is open) |
+| Alt+Shift+1–0 | (added by the plugin, see Install) paste slot 1…10 from anywhere: your pinned items first (in their order), then the newest history items fill the rest. With 4 pins, Alt+Shift+5 is the newest history item and Alt+Shift+0 the 6th. (runs `paste-slot.sh`; closes the popup first if it is open) |
 
 In the popup:
 
@@ -250,17 +265,17 @@ In the popup:
 |---|---|
 | type | search (case-insensitive regex; invalid regex = plain text) |
 | ↑ ↓ / Ctrl+K Ctrl+J, PgUp PgDn, Home End | move through the list |
-| Enter / click | paste into the window you came from |
+| Enter / click | paste into the window you came from (click: per Settings > General > "When you left-click an item": Copy only, Copy, paste and close (default), or Copy, paste and keep open: the popup closes for the paste and opens again with the same search) |
 | Shift+Enter | copy only (select it without pasting) |
 | Alt+Enter | open (URL in browser, text in editor, image in editor) |
 | Ctrl+click / Ctrl+Space | add the row to the paste queue (numbered 1, 2, 3 …); again takes it out |
 | Ctrl+click / Ctrl+Space 2+ items, then close the popup (Enter, click, Esc twice or click outside) | start the paste queue: every Super+V (or Ctrl+V) pastes the next item, Esc cancels |
-| Alt+Shift+1…9, 0 | paste slot N, the same item as from anywhere (also while searching); the 10 slotted rows show their key |
+| Alt+Shift+1–0 | paste slot N, the same item as from anywhere (also while searching); the 10 slotted rows show their key |
 | → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
 | Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
 | Delete (or the trash icon) | delete the item (with search text selected: delete that text). The trash icon asks first: one click turns it red with a check, a second click deletes (it resets after 3 s, when the mouse leaves it or the popup closes). Del on the keyboard deletes an unpinned item at once and arms a pinned one the same way |
 | Ctrl+Z | bring back the last deleted item (up to 10, in this session), at its place and with its pin; with nothing to bring back it edits the search |
-| Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in Settings > Flux: send the current clipboard |
+| Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in Settings > Phone (Flux): send the current clipboard |
 | Shift+Delete | clear history (asks first; only unpinned items are counted and deleted, pinned items stay) |
 | Ctrl+I (or the Incognito switch in the footer, or right-click the bar icon) | incognito on/off |
 | Backspace, Ctrl+Backspace, ← → | edit the search |
@@ -279,8 +294,8 @@ omarchy plugin add https://github.com/roehrbacher/Nice-Clipboard --enable
 
 The plugin ID is `timon.clipboard`. Enabling it switches off the stock
 `omarchy.clipboard` (it is a clone of it), so only one clipboard watcher runs.
-Alt+V and Alt+Shift+1…9, 0 work right away: the plugin adds them to the
-running Hyprland itself (Settings > Shortcuts > Global shortcuts, on by
+Alt+V and Alt+Shift+1–0 work right away: the plugin adds them to the
+running Hyprland itself (Settings > Shortcuts > System-wide shortcuts, on by
 default). No config file is edited. They are added again after every
 Hyprland config reload, only on keys that are still free (a key your config
 already uses is left alone and listed there), and removed when you switch the
@@ -337,7 +352,7 @@ omarchy restart shell
 ```
 
 Remove any bindings you added yourself too (the plugin's own Alt+V and
-Alt+Shift+1…9, 0 go away with it). Super+Ctrl+V then opens the stock manager again.
+Alt+Shift+1–0 go away with it). Super+Ctrl+V then opens the stock manager again.
 To only switch it off and keep it installed: `omarchy plugin disable timon.clipboard`.
 
 ## Tests
@@ -359,6 +374,7 @@ bash tests/uninstall.test.sh    # uninstall.sh: shows every step, waits for Ente
 bash tests/geometry/run-harness.sh v129 # offscreen: slot hints and keys, demo banner, settings window reopen after Super+W, feedback sent state
 bash tests/geometry/run-harness.sh v130 # offscreen: update check off / on (stub), OCR sizes, sidebar link, feedback note at 940 and 620 px
 bash tests/geometry/run-harness.sh v131 # offscreen: delete confirm, Ctrl+Z undo, General / History / OCR / Uninstall pages (add a dir to keep the PNGs)
+bash tests/geometry/run-harness.sh v132 # offscreen: popup header next to the stock PanelHero, edit mode, paste and keep open, settings pages, subtitle sizes, phone quarantine
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,
