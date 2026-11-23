@@ -2,6 +2,15 @@
 
 Newest first. Older history is in the git log.
 
+## 1.31.1
+
+Code cleanup only; nothing you see or do should change.
+
+- Removed functions nothing called any more: the old OCR copy-the-command fallback (`copyOcrInstall`, `ocrInstallCommand`), the pre-1.31 OCR list and size helpers (`ocrLanguageRows`, `ocrSizeLabel`, `ocrSizeTip`), the unused item count label (`countLabel`), the popup-settings remnants (`stepKeepDays`, `contentMargin`, orphan comments) and the unused `CLICK_ACTIONS` list. Their tests now check the code that replaced them.
+- One on/off switch component (`SwitchTrack.qml`) for the footer Incognito switch, the General > Incognito row and the OCR "in use" switches (three copies before).
+- One "what else needs this language pack" check: `ocr-install.sh --needed-by <code>`, used by its own Remove and by `uninstall.sh` (the same pacman parsing was in both).
+- Tests: `run-v129.sh`, `run-v130.sh`, `run-v131.sh` are one `tests/geometry/run-harness.sh v129|v130|v131`; the update-check stub answers 99.0.0, so the v130 "update available" notice is really shown again (it stopped showing once the plugin itself reached 1.31.0). `run.sh` no longer starts clipboard watchers or stops the live ones (the other harnesses already did this).
+
 ## 1.31.0
 
 - Delete button per row: the first click turns it red with Omarchy's check icon, a second click deletes. It resets after 3 s, when the mouse leaves it, or when the popup closes. The row itself no longer turns red and the other buttons stay where they are. Keyboard Del: unpinned at once, pinned arms first (as before).

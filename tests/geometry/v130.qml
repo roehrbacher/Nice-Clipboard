@@ -4,13 +4,13 @@ import QtQuick.Window
 import qs.Commons
 import qs.Ui
 // 1.30.0 on the real Clipboard.qml (stub helpers): update check off by
-// default, then on (stub says 1.31.0: notice in the popup, once a day only),
+// default, then on (stub says 99.0.0: notice in the popup, once a day only),
 // OCR pills with pacman sizes, renamed OCR section, sidebar GitHub link,
-// feedback note under Send at 940 and 620 px. PNGs to $V130_PNG_DIR.
+// feedback note under Send at 940 and 620 px. PNGs to $HARNESS_PNG_DIR.
 ShellRoot {
   id: shell
   property var clip: null
-  readonly property string pngDir: Quickshell.env("V130_PNG_DIR") || ""
+  readonly property string pngDir: Quickshell.env("HARNESS_PNG_DIR") || ""
   function find(item, name, out) {
     if (!item) return
     if (item.objectName === name && out.indexOf(item) < 0) out.push(item)
@@ -30,7 +30,7 @@ ShellRoot {
     var c = Qt.createComponent("clip/Clipboard.qml")
     if (c.status !== Component.Ready) { console.log("V130 ERR " + c.errorString()); Qt.quit(); return }
     clip = c.createObject(win.contentItem, {})
-    var bg = Quickshell.env("V130_BG") || "#1e1e2e", fg = Quickshell.env("V130_FG") || "#cdd6f4", ac = Quickshell.env("V130_ACCENT") || "#89b4fa"
+    var bg = Quickshell.env("HARNESS_BG") || "#1e1e2e", fg = Quickshell.env("HARNESS_FG") || "#cdd6f4", ac = Quickshell.env("HARNESS_ACCENT") || "#89b4fa"
     clip.background = bg; clip.foreground = fg; clip.accent = ac; clip.border = ac; clip.scrim = "transparent"
     clip.selectedBackground = Qt.rgba(Qt.color(fg).r, Qt.color(fg).g, Qt.color(fg).b, 0.12); clip.selectedText = fg
     clip.open("{}")

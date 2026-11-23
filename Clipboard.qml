@@ -46,8 +46,6 @@ Item {
   property int selectedIndex: 0
   property bool cursorActive: false
   property bool clearConfirmOpen: false
-  // Settings view (gear icon in the footer).
-  // Keyboard order = on-screen order (1.25.0 sections).
   // Flux details for the settings view (from `flux-cli status --json`).
   property string phoneName: ""
   property int lastSync: 0
@@ -258,7 +256,6 @@ Item {
   property color accent: Color.accent
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
-  property int contentMargin: Style.spacing.panelPadding
   property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int footerRowHeight: Math.max(Style.space(26), Style.font.body + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
@@ -351,19 +348,10 @@ Item {
     root.nowSec = root.lastSync
   }
 
-  // Left/Right walk the auto-delete presets (clamped); Enter cycles.
-  function stepKeepDays(dir, wrap) {
-    var list = ClipboardHistory.KEEP_DAYS
-    var i = list.indexOf(root.keepDays) + dir
-    if (wrap) i = (i + list.length) % list.length
-    else i = Math.max(0, Math.min(list.length - 1, i))
-    root.setKeepDays(list[i])
-  }
-
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.31.0"
+  readonly property string pluginVersion: "1.31.1"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -371,8 +359,7 @@ Item {
   // Direct feedback (1.27.0, on since 1.28.0): Send posts the text to the
   // Nice Clipboard feedback Worker, which files it as an issue in a private
   // repo (rate limited, no IP kept). No browser, no GitHub account; only
-  // when Send (or Enter) is pressed. 1.30.0: the "open a GitHub issue"
-  // fallback (Ctrl+Shift+Enter) is gone.
+  // when Send (or Enter) is pressed.
   readonly property string feedbackEndpoint: "https://feedback.roehrbacher.com/feedback"
   property var feedbackPendingInput: null
   // input: the feedback field in the settings window.
@@ -1224,12 +1211,6 @@ Item {
   }
   function openIndex(index) { root.runOnIndex(index, "open") }
   // Settings: copy one language's pacman command (the user runs it).
-  function copyOcrInstall(lang) {
-    if (!lang || !lang.cmd || lang.installed) return
-    root.copyText(lang.cmd)
-    root.notify("󰆍", "Copied: install " + lang.name + " (OCR)", "Paste it in a terminal with Ctrl+Shift+V, press Enter and type your password. Then reopen the clipboard.", 6000)
-  }
-
   // Actions shown on a selected row, left to right (the extra arguments only
   // make the binding update).
   function rowActions(index, armedIndex, phone, count) {
@@ -2148,23 +2129,12 @@ Item {
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
                           }
-                          Rectangle {
+                          SwitchTrack {
                             id: useSwitch
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            width: Math.round(Style.font.body * 2.2)
-                            height: Math.round(Style.font.body * 1.2)
-                            radius: height / 2
-                            color: parent.on ? root.accent : Util.alpha(root.foreground, 0.22)
-                            Rectangle {
-                              width: parent.height - Style.space(4)
-                              height: width
-                              radius: width / 2
-                              y: Style.space(2)
-                              x: parent.parent.on ? parent.width - width - Style.space(2) : Style.space(2)
-                              color: parent.parent.on ? root.background : root.foreground
-                              Behavior on x { NumberAnimation { duration: 120 } }
-                            }
+                            on: parent.on
+                            accent: root.accent; foreground: root.foreground; background: root.background
                           }
                           MouseArea {
                             anchors.fill: parent
@@ -2608,23 +2578,11 @@ Item {
                   font.pixelSize: Style.font.body
                 }
 
-                Rectangle {
+                SwitchTrack {
                   visible: parent.parent.modelData.key === "incognito"
                   anchors.verticalCenter: parent.verticalCenter
-                  width: Math.round(Style.font.body * 2.2)
-                  height: Math.round(Style.font.body * 1.2)
-                  radius: height / 2
-                  color: root.privateMode ? root.accent : Util.alpha(root.foreground, 0.22)
-
-                  Rectangle {
-                    width: parent.height - Style.space(4)
-                    height: width
-                    radius: width / 2
-                    y: Style.space(2)
-                    x: root.privateMode ? parent.width - width - Style.space(2) : Style.space(2)
-                    color: root.privateMode ? root.background : root.foreground
-                    Behavior on x { NumberAnimation { duration: 120 } }
-                  }
+                  on: root.privateMode
+                  accent: root.accent; foreground: root.foreground; background: root.background
                 }
               }
 
@@ -3406,25 +3364,11 @@ Item {
                     font.pixelSize: Style.font.body
                   }
 
-                  Rectangle {
-                    id: track
+                  SwitchTrack {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.round(Style.font.body * 2.2)
-                    height: Math.round(Style.font.body * 1.2)
-                    radius: height / 2
-                    color: root.privateMode ? root.accent : Util.alpha(root.foreground, 0.22)
-
-                    Rectangle {
-                      width: track.height - Style.space(4)
-                      height: width
-                      radius: width / 2
-                      y: Style.space(2)
-                      x: root.privateMode ? track.width - width - Style.space(2) : Style.space(2)
-                      color: root.privateMode ? root.background : root.foreground
-                      Behavior on x { NumberAnimation { duration: 120 } }
-                    }
+                    on: root.privateMode
+                    accent: root.accent; foreground: root.foreground; background: root.background
                   }
-
                 }
 
                 MouseArea {

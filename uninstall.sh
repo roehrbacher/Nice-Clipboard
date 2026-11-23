@@ -28,7 +28,7 @@ if [[ ${1:-} == --languages && -r $data/ocr-installed ]]; then
   while read -r code; do
     [[ $code =~ ^[a-z]{3}(_[a-z]{3,4})?$ ]] || continue
     "$pacman" -Q "tesseract-data-$code" >/dev/null 2>&1 || continue
-    needed=$(LC_ALL=C "$pacman" -Qi "tesseract-data-$code" 2>/dev/null | awk '/^Required By/ { on = 1; sub(/^[^:]*: /, "") } /^[A-Z]/ && !/^Required By/ { on = 0 } on' | tr -s ' \n' '\n' | grep -vxE 'tesseract|None|' | paste -sd ' ')
+    needed=$(bash "$plugin/ocr-install.sh" --needed-by "$code")
     if [[ -n $needed ]]; then echo "Keeping tesseract-data-$code ($needed needs it)."; continue; fi
     if ((left <= 1)); then echo "Keeping tesseract-data-$code (the last language; tesseract needs one)."; continue; fi
     langs+=("tesseract-data-$code"); left=$((left - 1))

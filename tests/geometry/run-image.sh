@@ -10,7 +10,7 @@ mkdir "$tmp/clip" "$tmp/data"; cp "$src"/*.qml "$src"/*.js "$src"/*.sh "$tmp/cli
 # Never touch the live Hyprland binds: global-keys.sh is a stub that logs.
 printf '#!/bin/bash\necho "$1" >> "%s/globalkeys"\n[[ $1 == apply ]] && printf "Alt+V\\ttaken\\tClipboard history\\nAlt+Shift+1\\ttaken\\tPaste pinned clipboard item 1\\nAlt+Shift+0\\tbound\\t\\n"\nexit 0\n' "$tmp" > "$tmp/clip/global-keys.sh"; chmod +x "$tmp/clip/global-keys.sh"
 export NICE_CLIPBOARD_NO_GLOBAL_KEYS=1
-printf 'KineticScroll 1.0 KineticScroll.qml\nMarqueeLabel 1.0 MarqueeLabel.qml\nPanelStub 1.0 PanelStub.qml\n' > "$tmp/clip/qmldir"
+printf 'KineticScroll 1.0 KineticScroll.qml\nMarqueeLabel 1.0 MarqueeLabel.qml\nSwitchTrack 1.0 SwitchTrack.qml\nPanelStub 1.0 PanelStub.qml\n' > "$tmp/clip/qmldir"
 sed -i -e 's/^  KeyboardPanel {/  PanelStub {/' -e 's/; pkill -f [^"]*"/"/' -e '/textWatchProc.running = true$/d' -e '/imageWatchProc.running = true$/d' -e '/currentProc.running = true$/d' "$tmp/clip/Clipboard.qml"
 printf '  function displayModelCount() { return displayModel.count }\n}\n' > "$tmp/tail"; sed -i '$d' "$tmp/clip/Clipboard.qml"; cat "$tmp/tail" >> "$tmp/clip/Clipboard.qml"
 cp "$here/${1:-image.qml}" "$tmp/shell.qml"

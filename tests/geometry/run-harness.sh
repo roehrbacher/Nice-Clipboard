@@ -1,12 +1,19 @@
 #!/bin/bash
-# Offscreen (software) run of the real Clipboard.qml with v131.qml (1.31.0:
-# delete button arm/confirm, Ctrl+Z undo, General / History / Text
-# recognition / Uninstall pages; every terminal launch goes to a stub that
-# logs, so nothing is installed, removed or uninstalled). clipboard.sh, queue.sh, wl-copy, the
-# notifiers and the terminal launcher are stubs that only log; temp data
-# dir, no watchers, hard timeout. Nothing is installed, sent or pasted.
-#   bash tests/geometry/run-v131.sh [png dir]
+# Offscreen (software) run of the real Clipboard.qml with one scenario file:
+#   v129.qml  1.29.0: Alt+Shift slots, settings window only + reopen, feedback
+#             "sent" state, dev demo banner, install launch
+#   v130.qml  1.30.0: update check off by default / on (notice in the popup),
+#             OCR sizes, sidebar GitHub link, feedback note at 940 and 620 px
+#   v131.qml  1.31.0: delete arm/confirm, Ctrl+Z undo, General / History /
+#             Text recognition / Uninstall pages
+# clipboard.sh, queue.sh, global-keys.sh, update-check.sh, wl-copy, the
+# notifiers, xdg-open and the terminal launcher are stubs that only log;
+# feedback goes to a local fake Worker; temp data dir, no watchers, hard
+# timeout. Nothing is installed, removed, sent or pasted.
+#   bash tests/geometry/run-harness.sh v129|v130|v131 [png dir]
 set -u
+name=${1:?usage: run-harness.sh v129|v130|v131 [png dir]}; shift
+tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."
 tmp=$(mktemp -d)
@@ -16,7 +23,7 @@ mkdir "$tmp/clip" "$tmp/data" "$tmp/bin" "$tmp/png"; cp "$src"/*.qml "$src"/*.js
 printf '#!/bin/bash\necho "$1" >> "%s/globalkeys"\n[[ $1 == apply ]] && printf "Alt+V\\ttaken\\tClipboard history\\nAlt+Shift+1\\ttaken\\tPaste pinned clipboard item 1\\nAlt+Shift+0\\tbound\\t\\n"\nexit 0\n' "$tmp" > "$tmp/clip/global-keys.sh"; chmod +x "$tmp/clip/global-keys.sh"
 export NICE_CLIPBOARD_NO_GLOBAL_KEYS=1
 printf '#!/bin/bash\necho "$*" >> "%s/queue"\nexit 0\n' "$tmp" > "$tmp/clip/queue.sh"
-# Like the XPS: deu, eng, spa installed, hints en_US + kb:de, so no real suggestion.
+# Like the XPS: deu, eng, ita, spa installed, hints en_US + kb:de, so no real suggestion.
 # --sizes runs the real scan.sh: it only reads the pacman sync database.
 mv "$tmp/clip/scan.sh" "$tmp/clip/scan-real.sh"
 cat > "$tmp/clip/scan.sh" <<'SH'
@@ -26,7 +33,7 @@ cat > "$tmp/clip/scan.sh" <<'SH'
 echo '{"installed":["deu","eng","ita","spa"],"used":"eng+deu+ita+spa","env":"","hints":["en_US.UTF-8","kb:de"]}'
 SH
 # Never GitHub from tests: the update check is a stub that logs.
-printf '#!/bin/bash\necho call >> "%s/updatecheck"\necho '"'"'{"latest":"1.31.0","git":false}'"'"'\n' "$tmp" > "$tmp/clip/update-check.sh"
+printf '#!/bin/bash\necho call >> "%s/updatecheck"\necho '"'"'{"latest":"99.0.0","git":false}'"'"'\n' "$tmp" > "$tmp/clip/update-check.sh"
 printf '#!/bin/bash\necho "$*" >> "%s/helper"\n[[ $1 == current ]] && echo empty\nexit 0\n' "$tmp" > "$tmp/clip/clipboard.sh"; chmod +x "$tmp/clip/"*.sh
 printf '#!/bin/bash\n[[ $1 == status ]] && echo '"'"'{"running":true,"devices":[]}'"'"'\nexit 0\n' > "$tmp/bin/flux-cli"
 printf '#!/bin/bash\necho "uwsm-app: $*" >> "%s/install"\n' "$tmp" > "$tmp/bin/uwsm-app"
@@ -34,7 +41,7 @@ printf '#!/bin/bash\necho "SUDO MUST NOT RUN" >> "%s/install"; exit 1\n' "$tmp" 
 printf '#!/bin/bash\necho "$*" >> "%s/xdgopen"\n' "$tmp" > "$tmp/bin/xdg-open"
 for b in omarchy-notification-send notify-send; do printf '#!/bin/bash\nprintf "%%s|" "$@" >> "%s/notify"; echo >> "%s/notify"\n' "$tmp" "$tmp" > "$tmp/bin/$b"; done
 printf '#!/bin/bash\ncat >> "%s/wlcopy"; echo >> "%s/wlcopy"\n' "$tmp" "$tmp" > "$tmp/bin/wl-copy"; chmod +x "$tmp/bin/"*
-printf 'KineticScroll 1.0 KineticScroll.qml\nMarqueeLabel 1.0 MarqueeLabel.qml\nPanelStub 1.0 PanelStub.qml\n' > "$tmp/clip/qmldir"
+printf 'KineticScroll 1.0 KineticScroll.qml\nMarqueeLabel 1.0 MarqueeLabel.qml\nSwitchTrack 1.0 SwitchTrack.qml\nPanelStub 1.0 PanelStub.qml\n' > "$tmp/clip/qmldir"
 sed -i -e 's/^  KeyboardPanel {/  PanelStub {/' -e 's/; pkill -f [^"]*"/"/' -e '/textWatchProc.running = true$/d' -e '/imageWatchProc.running = true$/d' -e '/currentProc.running = true$/d' "$tmp/clip/Clipboard.qml"
 printf '  function displayModelCount() { return displayModel.count }\n  function displayRow(i) { return displayModel.get(i) }\n  function settingsLoaderItem() { return settingsWindowLoader.item }\n}\n' > "$tmp/tail"; sed -i '$d' "$tmp/clip/Clipboard.qml"; cat "$tmp/tail" >> "$tmp/clip/Clipboard.qml"
 # Never the live feedback Worker: a local fake one answers {"ok":true}.
@@ -53,18 +60,19 @@ PY
 timeout -s KILL 65 python3 "$tmp/worker.py" & wpid=$!
 trap 'kill $wpid 2>/dev/null; rm -rf "$tmp"' EXIT
 sed -i -E "s|readonly property string feedbackEndpoint: \"[^\"]*\"|readonly property string feedbackEndpoint: \"http://127.0.0.1:$port/feedback\"|" "$tmp/clip/Clipboard.qml"
-grep -q 'feedback.roehrbacher.com' "$tmp/clip/Clipboard.qml" && { echo "V131 ERROR live endpoint still set"; exit 1; }
-cp "$here/v131.qml" "$tmp/shell.qml"
+grep -q 'feedback.roehrbacher.com' "$tmp/clip/Clipboard.qml" && { echo "$tag ERROR live endpoint still set"; exit 1; }
+cp "$here/$name.qml" "$tmp/shell.qml"
 theme="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml"
 tc() { sed -n "s/^$1 *= *\"\(#[0-9A-Fa-f]*\)\".*/\1/p" "$theme" 2>/dev/null | head -1; }
-export V131_BG=$(tc background) V131_FG=$(tc foreground) V131_ACCENT=$(tc accent) V131_URGENT=$(tc red)
-V131_PNG_DIR="$tmp/png" PATH="$tmp/bin:$PATH" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/data" QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software setsid timeout -s KILL 55 quickshell -p "$tmp/shell.qml" > "$tmp/out" 2>&1
+export HARNESS_BG=$(tc background) HARNESS_FG=$(tc foreground) HARNESS_ACCENT=$(tc accent) HARNESS_URGENT=$(tc red)
+HARNESS_PNG_DIR="$tmp/png" PATH="$tmp/bin:$PATH" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/data" QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software setsid timeout -s KILL 55 quickshell -p "$tmp/shell.qml" > "$tmp/out" 2>&1
 sleep 1
-grep -E 'V131|ERROR|rror:|TypeError|ReferenceError|Unable' "$tmp/out" | grep -v 'qt.qpa'
-echo "V131 helper calls: $(grep -v '^current' "$tmp/helper" 2>/dev/null | tr "\n" ";")"
-echo "V131 fake Worker got: $(cat "$tmp/posted" 2>/dev/null)"
-echo "V131 global-keys.sh calls: $(tr "\n" ";" 2>/dev/null < "$tmp/globalkeys")"
-echo "V131 terminal launches: $(sed "s#$tmp#TMP#g" "$tmp/install" 2>/dev/null | tr "\n" ";")"
-echo "V131 xdg-open calls: $(tr "\n" ";" 2>/dev/null < "$tmp/xdgopen")"
-echo "V131 state.json: $(cat "$tmp/data/timon.clipboard/state.json" 2>/dev/null)"
-if [[ -n ${1:-} ]]; then mkdir -p "$1"; cp "$tmp"/png/*.png "$1"/ 2>/dev/null; echo "V131 PNGs: $(cd "$1" && command ls *.png 2>/dev/null | tr "\n" " ")"; fi
+grep -E "$tag|"'ERROR|rror:|TypeError|ReferenceError|Unable' "$tmp/out" | grep -v 'qt.qpa'
+echo "$tag helper calls: $(grep -v '^current' "$tmp/helper" 2>/dev/null | tr "\n" ";")"
+echo "$tag fake Worker got: $(cat "$tmp/posted" 2>/dev/null)"
+echo "$tag update-check.sh calls: $(grep -c call "$tmp/updatecheck" 2>/dev/null || echo 0)"
+echo "$tag global-keys.sh calls: $(tr "\n" ";" 2>/dev/null < "$tmp/globalkeys")"
+echo "$tag terminal launches: $(sed "s#$tmp#TMP#g" "$tmp/install" 2>/dev/null | tr "\n" ";")"
+echo "$tag xdg-open calls: $(tr "\n" ";" 2>/dev/null < "$tmp/xdgopen")"
+echo "$tag state.json: $(cat "$tmp/data/timon.clipboard/state.json" 2>/dev/null)"
+if [[ -n ${1:-} ]]; then mkdir -p "$1"; cp "$tmp"/png/*.png "$1"/ 2>/dev/null; echo "$tag PNGs: $(cd "$1" && command ls *.png 2>/dev/null | tr "\n" " ")"; fi

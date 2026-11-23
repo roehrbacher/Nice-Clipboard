@@ -6,12 +6,12 @@ import qs.Ui
 // 1.29.0 on the real Clipboard.qml (stub helpers): Alt+Shift slot hints and
 // keys, no settings page in the popup, settings window reopens after it was
 // closed by the compositor (Super+W), feedback sent state, dev demo banner,
-// install launch. PNGs to $V129_PNG_DIR.
+// install launch. PNGs to $HARNESS_PNG_DIR.
 ShellRoot {
   id: shell
   property var clip: null
   property var firstWin: null
-  readonly property string pngDir: Quickshell.env("V129_PNG_DIR") || ""
+  readonly property string pngDir: Quickshell.env("HARNESS_PNG_DIR") || ""
   function find(item, name, out) {
     if (!item) return
     if (item.objectName === name && out.indexOf(item) < 0) out.push(item)
@@ -30,7 +30,7 @@ ShellRoot {
     var c = Qt.createComponent("clip/Clipboard.qml")
     if (c.status !== Component.Ready) { console.log("V129 ERR " + c.errorString()); Qt.quit(); return }
     clip = c.createObject(win.contentItem, {})
-    var bg = Quickshell.env("V129_BG") || "#1e1e2e", fg = Quickshell.env("V129_FG") || "#cdd6f4", ac = Quickshell.env("V129_ACCENT") || "#89b4fa"
+    var bg = Quickshell.env("HARNESS_BG") || "#1e1e2e", fg = Quickshell.env("HARNESS_FG") || "#cdd6f4", ac = Quickshell.env("HARNESS_ACCENT") || "#89b4fa"
     clip.background = bg; clip.foreground = fg; clip.accent = ac; clip.border = ac; clip.scrim = "transparent"
     clip.selectedBackground = Qt.rgba(Qt.color(fg).r, Qt.color(fg).g, Qt.color(fg).b, 0.12); clip.selectedText = fg
     clip.open("{}")

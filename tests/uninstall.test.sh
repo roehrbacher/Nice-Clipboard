@@ -9,7 +9,7 @@ fail=0
 export HOME="$t/home" XDG_DATA_HOME="$t/home/.local/share" TMPDIR="$t" NICE_CLIPBOARD_PACMAN="$t/bin/pacman"
 P="$HOME/.config/omarchy/plugins/timon.clipboard"
 mkdir -p "$P" "$XDG_DATA_HOME/timon.clipboard" "$t/bin"
-cp "$here/../uninstall.sh" "$P/"
+cp "$here/../uninstall.sh" "$here/../ocr-install.sh" "$P/"
 for s in global-keys.sh clipboard.sh; do printf '#!/bin/bash\necho "%s $*" >> "%s/log"\n' "$s" "$t" > "$P/$s"; done
 printf '#!/bin/bash\necho "sudo $*" >> "%s/log"\n' "$t" > "$t/bin/sudo"
 printf '#!/bin/bash\necho "omarchy $*" >> "%s/log"\n[[ $1 == plugin && $2 == remove ]] && mv "%s" "%s/.timon.clipboard.bak.20261123"\n' "$t" "$P" "$HOME/.config/omarchy/plugins" > "$t/bin/omarchy"

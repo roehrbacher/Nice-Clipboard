@@ -10,10 +10,19 @@
 # "Uninstall plugin and languages" removes only those). --remove refuses a
 # pack something else needs (pacman "Required By" other than tesseract, e.g.
 # eng: omasnap) and the last installed language (tesseract needs one).
+#   ocr-install.sh --needed-by <code>             what else needs the pack
+#                                                 (also used by uninstall.sh)
 # OCR_INSTALL_DRY=1: print the command instead of running it (tests).
 set -u
+pacman=${NICE_CLIPBOARD_PACMAN:-pacman}
+# Packages that need tesseract-data-<code>, other than tesseract itself
+# (pacman "Required By"), space separated; empty when nothing else does.
+needed_by() {
+  LC_ALL=C "$pacman" -Qi "tesseract-data-$1" 2>/dev/null | awk '/^Required By/ { on = 1; sub(/^[^:]*: /, "") } /^[A-Z]/ && !/^Required By/ { on = 0 } on' | tr -s ' \n' '\n' | grep -vxE 'tesseract|None|' | paste -sd ' '
+}
 remove=0
 [[ ${1:-} == --remove ]] && { remove=1; shift; }
+[[ ${1:-} == --needed-by ]] && { [[ ${2:-} =~ ^[a-z]{3}(_[a-z]{3,4})?$ ]] || exit 2; needed_by "$2"; exit 0; }
 code=${1:-}
 name=${2:-}
 if [[ ! $code =~ ^[a-z]{3}(_[a-z]{3,4})?$ ]]; then
@@ -24,10 +33,9 @@ fi
 pkg=tesseract-data-$code
 data="${XDG_DATA_HOME:-$HOME/.local/share}/timon.clipboard"
 record="$data/ocr-installed"
-pacman=${NICE_CLIPBOARD_PACMAN:-pacman}
 
 if ((remove)); then
-  needed=$(LC_ALL=C "$pacman" -Qi "$pkg" 2>/dev/null | awk '/^Required By/ { on = 1; sub(/^[^:]*: /, "") } /^[A-Z]/ && !/^Required By/ { on = 0 } on' | tr -s ' \n' '\n' | grep -vxE 'tesseract|None|' | paste -sd ' ')
+  needed=$(needed_by "$code")
   langs=$(LC_ALL=C "$pacman" -Qq 2>/dev/null | grep -E '^tesseract-data-[a-z_]+$' | grep -vx tesseract-data-osd | wc -l)
   if [[ -n $needed ]]; then
     printf '\nNice Clipboard keeps %s text recognition: %s needs it.\nPress Enter to close.\n' "$name" "$needed"; read -r; exit 3

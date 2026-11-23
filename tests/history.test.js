@@ -115,12 +115,6 @@ assert.strictEqual(act(K.U, { ctrl: true }), "clearSearch", "Ctrl+U clears the s
 assert.strictEqual(H.deleteAction(false, false), "delete", "unpinned: delete at once")
 assert.strictEqual(H.deleteAction(true, false), "arm", "pinned: first Del arms")
 assert.strictEqual(H.deleteAction(true, true), "delete", "pinned + armed: second Del deletes")
-// 6: count label
-assert.strictEqual(H.countLabel(119, 3, 119, false), "119 items", "1.5.0: no pinned part")
-assert.strictEqual(H.countLabel(119, 0, 119, false), "119 items", "no pinned part when 0")
-assert.strictEqual(H.countLabel(1, 0, 1, false), "1 item", "singular")
-assert.strictEqual(H.countLabel(0, 0, 0, false), "0 items")
-assert.strictEqual(H.countLabel(119, 3, 4, true), "4 of 119 items", "while searching")
 assert.strictEqual(H.pinnedCount([{ pinned: true }, {}, { pinned: true }]), 2)
 // 2: popup scale
 assert.strictEqual(H.popupScale(1080), 1, "24in 1080p unchanged")
@@ -526,7 +520,7 @@ console.log("filters/ocr: ok")}
   // pinned row 0 (1 other pin) dragged into history: unpinned, shown under Pinned
   assert.deepStrictEqual(H.dragPlan(4, 1, 6, true, 0), { index: 1, pinned: false })
   assert.deepStrictEqual(H.dragPlan(0, 1, 6, true, 0), { index: 0, pinned: true })
-  assert.ok(H.searchFilterExamples.length === 11 && H.searchFilterExamples.some(f => f.value === "app:firefox"))
+  assert.ok(H.SEARCH_FILTER_EXAMPLES.length === 11 && H.SEARCH_FILTER_EXAMPLES.some(f => f.value === "app:firefox"))
   console.log("qr/click/drag: ok")
 }
 
@@ -548,18 +542,13 @@ console.log("filters/ocr: ok")}
   assert.strictEqual(H.displayRows(h, "", 10)[0].fullText, "old pin")
   console.log("1.19.0: ok")
 }
-assert.strictEqual(H.ocrInstallCommand(["eng"]), "sudo pacman -S tesseract-data-deu")
-assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesseract-data-fra")
 
 // 1.20.0: OCR language list and the empty-clipboard fill.
 {
-  const rows = H.ocrLanguageRows(["eng", "deu"])
+  const rows = H.ocrAvailableRows([], {})
   assert.strictEqual(rows.length, 16, "16 popular languages")
   assert.deepStrictEqual(rows.map(r => r.code).sort(), ["eng","deu","fra","spa","ita","por","nld","pol","ces","tur","rus","ukr","chi_sim","jpn","kor","ara"].sort(), "Arch package codes")
-  const by = c => rows.find(r => r.code === c)
-  assert.strictEqual(by("deu").cmd, "sudo pacman -S tesseract-data-deu", "exact pacman command")
-  assert.strictEqual(by("chi_sim").cmd, "sudo pacman -S tesseract-data-chi_sim", "Chinese simplified = chi_sim")
-  assert.ok(by("eng").installed && by("deu").installed && !by("fra").installed, "installed ones marked")
+  assert.strictEqual(H.ocrLanguageName("chi_sim"), "Chinese (simplified)", "Chinese simplified = chi_sim")
   const now = Date.now()
   const hist = [{ type: "text", text: "newest", at: now }, { type: "text", text: "pin top", pinned: true, at: now - 5 }, { type: "text", text: "pin 2", pinned: true, at: now - 9 }]
   assert.strictEqual(H.firstPinnedIndex(hist), 1, "top pinned row's history index")
@@ -656,10 +645,9 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.ok(H.ocrPreview("a & b ".repeat(40)).endsWith("…”"), "escaping does not eat the quote")
 
   // 1.28.0: OCR languages sorted by name; install argv only for plain codes
-  const names = H.ocrLanguageRows(["eng"]).map(r => r.name)
+  const names = H.ocrAvailableRows(["eng"], {}).map(r => r.name)
   assert.deepStrictEqual(names, names.slice().sort(), "alphabetical by shown name")
   assert.strictEqual(names[0], "Arabic"); assert.strictEqual(names[names.length - 1], "Ukrainian")
-  assert.strictEqual(H.ocrLanguageRows(["eng"]).find(r => r.code === "eng").installed, true)
   const script = "/home/u/.config/omarchy/plugins/timon.clipboard/ocr-install.sh"
   const argv = H.ocrInstallArgv("deu", script, "German")
   assert.strictEqual(argv[0], "bash"); assert.strictEqual(argv[1], "-c")
@@ -717,13 +705,12 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.strictEqual(H.feedbackUrl, undefined)
   // 1.30.0: OCR pack sizes from pacman, never guessed
   const sz = { deu: { download: "5.94 MiB", installed: "14.72 MiB" }, deu_frak: { download: "752.64 KiB", installed: "1932.36 KiB" }, bad: { download: "?", installed: "" } }
-  assert.strictEqual(H.ocrSizeLabel(sz, "deu", true), "15 MB")
-  assert.strictEqual(H.ocrSizeLabel(sz, "deu", false), "6.2 MB")
-  assert.strictEqual(H.ocrSizeLabel(sz, "deu_frak", false), "0.8 MB")
-  assert.strictEqual(H.ocrSizeLabel(sz, "fra", false), "", "unknown = nothing")
-  assert.strictEqual(H.ocrSizeLabel(sz, "bad", false), "")
-  assert.strictEqual(H.ocrSizeLabel({}, "deu", true), "")
-  assert.strictEqual(H.ocrSizeTip(sz, "deu"), "Download 6.2 MB, 15 MB on disk")
+  const mb = v => H.megabytes(H.pacmanBytes(v))
+  assert.strictEqual(mb(sz.deu.installed), "15 MB")
+  assert.strictEqual(mb(sz.deu.download), "6.2 MB")
+  assert.strictEqual(mb(sz.deu_frak.download), "0.8 MB")
+  assert.strictEqual(mb(sz.bad.download), "", "unknown = nothing")
+  assert.strictEqual(mb(""), "")
   assert.strictEqual(H.pacmanBytes("1.50 GiB"), 1.5 * 1073741824)
   // 1.30.0: update check helpers
   assert.strictEqual(H.versionNewer("1.31.0", "1.30.0"), true)

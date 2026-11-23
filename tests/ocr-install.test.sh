@@ -43,6 +43,7 @@ printf '\n' | OCR_INSTALL_DRY=1 OCR_INSTALL_CLOSE_AFTER=0 bash "$s" --remove fra
 [[ ! -s $XDG_DATA_HOME/timon.clipboard/ocr-installed ]] && echo "ok   remove drops it from the record" || { echo "FAIL record after remove"; fail=1; }
 out=$(printf '\n' | OCR_INSTALL_DRY=1 bash "$s" --remove eng English); rc=$?
 [[ $rc == 3 && $out == *"omasnap needs it"* && $out != *"dry run"* ]] && echo "ok   eng kept: omasnap needs it" || { echo "FAIL eng protect: rc=$rc $out"; fail=1; }
+[[ $(bash "$s" --needed-by eng) == omasnap && -z $(bash "$s" --needed-by deu) && $(bash "$s" --needed-by "x;y"; echo $?) == 2 ]] && echo "ok   --needed-by: eng omasnap, deu nothing, odd codes refused" || { echo "FAIL --needed-by"; fail=1; }
 printf '#!/bin/bash\ncase $1 in -Qq) printf "tesseract-data-osd\\ntesseract-data-deu\\n";; -Qi) printf "Name : x\\nRequired By : tesseract\\n";; esac\n' > "$t/one"; chmod +x "$t/one"
 out=$(printf '\n' | NICE_CLIPBOARD_PACMAN="$t/one" OCR_INSTALL_DRY=1 bash "$s" --remove deu German); rc=$?
 [[ $rc == 3 && $out == *"last language"* ]] && echo "ok   last language kept" || { echo "FAIL last: rc=$rc $out"; fail=1; }

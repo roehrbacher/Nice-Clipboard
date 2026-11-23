@@ -355,7 +355,10 @@ bash tests/ocr-install.test.sh  # OCR install script: shows the command, waits f
 bash tests/global-keys.test.sh  # plugin-added global keys: only free keys bound, taken ones reported, remove drops only ours (stub hyprctl)
 bash tests/send.test.sh         # Send via Flux: fluxd socket only, no wl-copy, history untouched (fake fluxd)
 bash tests/slots.test.sh        # Alt+Shift slots: copy-slot / paste-slot.sh (and old paste-pinned.sh) = the popup's mapping
-bash tests/geometry/run-v129.sh # 1.29.0 offscreen: slot hints and keys, demo banner, settings window reopen after Super+W, feedback sent state (writes PNGs)
+bash tests/uninstall.test.sh    # uninstall.sh: shows every step, waits for Enter, only removes recorded, unneeded languages (fake HOME, stubs)
+bash tests/geometry/run-harness.sh v129 # offscreen: slot hints and keys, demo banner, settings window reopen after Super+W, feedback sent state
+bash tests/geometry/run-harness.sh v130 # offscreen: update check off / on (stub), OCR sizes, sidebar link, feedback note at 940 and 620 px
+bash tests/geometry/run-harness.sh v131 # offscreen: delete confirm, Ctrl+Z undo, General / History / OCR / Uninstall pages (add a dir to keep the PNGs)
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,

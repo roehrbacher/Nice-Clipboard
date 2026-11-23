@@ -13,7 +13,7 @@ printf '#!/bin/bash\necho "$1" >> "%s/globalkeys"\n[[ $1 == apply ]] && printf "
 export NICE_CLIPBOARD_NO_GLOBAL_KEYS=1
 printf '#!/bin/bash\n[[ $1 == start ]] && cat > "%s/got"\nexit 0\n' "$tmp" > "$tmp/clip/queue.sh"
 printf '#!/bin/bash\nexit 0\n' > "$tmp/clip/clipboard.sh"; chmod +x "$tmp/clip/"*.sh
-printf 'KineticScroll 1.0 KineticScroll.qml\nMarqueeLabel 1.0 MarqueeLabel.qml\nPanelStub 1.0 PanelStub.qml\n' > "$tmp/clip/qmldir"
+printf 'KineticScroll 1.0 KineticScroll.qml\nMarqueeLabel 1.0 MarqueeLabel.qml\nSwitchTrack 1.0 SwitchTrack.qml\nPanelStub 1.0 PanelStub.qml\n' > "$tmp/clip/qmldir"
 sed -i -e 's/^  KeyboardPanel {/  PanelStub {/' -e 's/; pkill -f [^"]*"/"/' -e '/textWatchProc.running = true$/d' -e '/imageWatchProc.running = true$/d' -e '/currentProc.running = true$/d' "$tmp/clip/Clipboard.qml"
 cp "$here/queue.qml" "$tmp/shell.qml"
 XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/data" QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software setsid timeout -s KILL 20 quickshell -p "$tmp/shell.qml" > "$tmp/out" 2>&1

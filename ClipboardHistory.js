@@ -579,15 +579,6 @@ function unpinToTop(history, index, now) {
   return values
 }
 
-// Settings: the pacman command for the first common language pack that is
-// not installed yet (German first), else the generic form.
-function ocrInstallCommand(installed) {
-  var have = installed || []
-  var wish = ["deu", "fra", "spa", "ita"]
-  for (var i = 0; i < wish.length; i++) if (have.indexOf(wish[i]) < 0) return "sudo pacman -S tesseract-data-" + wish[i]
-  return "sudo pacman -S tesseract-data-<code>"
-}
-
 // 1.20.0: popular OCR languages for the settings list. Codes are the Arch
 // package suffixes (extra/tesseract-data-<code>, checked with pacman -Si).
 var OCR_LANGUAGES = [
@@ -605,13 +596,6 @@ var OCR_LANGUAGES = [
 function firstPinnedIndex(history) {
   var rows = displayRows(history, "", 200)
   return rows.length && rows[0].pinned === true ? rows[0].index : -1
-}
-// 1.28.0: sorted by the shown name (Arabic … Ukrainian).
-function ocrLanguageRows(installed) {
-  var have = installed || []
-  return OCR_LANGUAGES.map(function(l) {
-    return { code: l.code, name: l.name, installed: have.indexOf(l.code) >= 0, cmd: "sudo pacman -S tesseract-data-" + l.code }
-  }).sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0 })
 }
 
 // 1.30.0: update check (off by default). "1.31.0" > "1.30.0"?
@@ -649,17 +633,6 @@ function megabytes(bytes) {
   if (!(bytes >= 0)) return ""
   var mb = bytes / 1e6
   return (mb < 10 ? (Math.round(mb * 10) / 10).toFixed(1) : String(Math.round(mb))) + " MB"
-}
-function ocrSizeLabel(sizes, code, installed) {
-  var s = sizes && sizes[code]
-  if (!s) return ""
-  return megabytes(pacmanBytes(installed ? s.installed : s.download))
-}
-function ocrSizeTip(sizes, code) {
-  var s = sizes && sizes[code]
-  if (!s) return ""
-  var d = megabytes(pacmanBytes(s.download)), i = megabytes(pacmanBytes(s.installed))
-  return d && i ? "Download " + d + ", " + i + " on disk" : ""
 }
 
 // 1.29.0: runs the plugin's own ocr-install.sh in Omarchy's floating
@@ -735,7 +708,6 @@ function toggleOcrOff(off, code, installed) {
 // ---- click action (1.18.0) ------------------------------------------------
 // "paste": select, paste and close (default). "copy": put it on the
 // clipboard, popup stays open.
-var CLICK_ACTIONS = ["copy", "paste"]
 function clickActionOf(v) { return v === "copy" ? "copy" : "paste" }
 
 // ---- settings: search filter examples (1.18.0) ----------------------------
@@ -1156,14 +1128,6 @@ function deleteAction(pinned, armed) {
   return pinned === true && armed !== true ? "arm" : "delete"
 }
 
-// "119 items · 3 pinned", "1 item", "4 of 119 items · 3 pinned" while searching.
-function countLabel(total, pinned, shown, filtering) {
-  var n = Math.max(0, Number(total) || 0)
-  var items = n === 1 ? "1 item" : n + " items"
-  // Pinned items are not counted separately (their section shows them).
-  return filtering ? (Number(shown) || 0) + " of " + items : items
-}
-
 function pinnedCount(history) {
   var values = Array.isArray(history) ? history : []
   var n = 0
@@ -1522,7 +1486,6 @@ if (typeof module !== "undefined") {
     phoneGlyph: phoneGlyph,
     isModifierKey: isModifierKey,
     deleteAction: deleteAction,
-    countLabel: countLabel,
     pinnedCount: pinnedCount,
     popupScale: popupScale,
     fluxOrigin: fluxOrigin,
@@ -1545,16 +1508,13 @@ if (typeof module !== "undefined") {
     queueItems: queueItems,
     queueButtonLabel: queueButtonLabel,
     queueOnPick: queueOnPick,
-    ocrInstallCommand: ocrInstallCommand,
-    ocrLanguageRows: ocrLanguageRows,
     pacmanBytes: pacmanBytes,
     megabytes: megabytes,
-    ocrSizeLabel: ocrSizeLabel,
-    ocrSizeTip: ocrSizeTip,
     versionNewer: versionNewer,
     updateCheckDue: updateCheckDue,
     updateHowTo: updateHowTo,
     OCR_LANGUAGES: OCR_LANGUAGES,
+    SEARCH_FILTER_EXAMPLES: SEARCH_FILTER_EXAMPLES,
     firstPinnedIndex: firstPinnedIndex,
     queueItemKeys: queueItemKeys,
     clipKeyOf: clipKeyOf,
@@ -1563,10 +1523,8 @@ if (typeof module !== "undefined") {
     ocrPreview: ocrPreview,
     needsScan: needsScan,
     SCAN_VERSION: SCAN_VERSION,
-    CLICK_ACTIONS: CLICK_ACTIONS,
     clickActionOf: clickActionOf,
     dragPlan: dragPlan,
-    searchFilterExamples: SEARCH_FILTER_EXAMPLES,
     ocrInstallArgv: ocrInstallArgv,
     terminalArgv: terminalArgv,
     uninstallArgv: uninstallArgv,

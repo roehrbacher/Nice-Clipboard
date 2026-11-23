@@ -6,11 +6,11 @@ import qs.Ui
 // 1.31.0 on the real Clipboard.qml (stub helpers): delete button arms (red,
 // check icon) and confirms, disarms on mouse leave / after 3 s, Ctrl+Z
 // undo (place + pin), General / History / Text recognition / Uninstall
-// pages. PNGs to $V131_PNG_DIR.
+// pages. PNGs to $HARNESS_PNG_DIR.
 ShellRoot {
   id: shell
   property var clip: null
-  readonly property string pngDir: Quickshell.env("V131_PNG_DIR") || ""
+  readonly property string pngDir: Quickshell.env("HARNESS_PNG_DIR") || ""
   function find(item, name, out) {
     if (!item) return
     if (item.objectName === name && out.indexOf(item) < 0) out.push(item)
@@ -31,8 +31,8 @@ ShellRoot {
     var c = Qt.createComponent("clip/Clipboard.qml")
     if (c.status !== Component.Ready) { console.log("V131 ERR " + c.errorString()); Qt.quit(); return }
     clip = c.createObject(win.contentItem, {})
-    var bg = Quickshell.env("V131_BG") || "#1e1e2e", fg = Quickshell.env("V131_FG") || "#cdd6f4", ac = Quickshell.env("V131_ACCENT") || "#89b4fa"
-    clip.background = bg; clip.foreground = fg; clip.accent = ac; clip.border = ac; clip.scrim = "transparent"; clip.urgent = Quickshell.env("V131_URGENT") || "#a55555"
+    var bg = Quickshell.env("HARNESS_BG") || "#1e1e2e", fg = Quickshell.env("HARNESS_FG") || "#cdd6f4", ac = Quickshell.env("HARNESS_ACCENT") || "#89b4fa"
+    clip.background = bg; clip.foreground = fg; clip.accent = ac; clip.border = ac; clip.scrim = "transparent"; clip.urgent = Quickshell.env("HARNESS_URGENT") || "#a55555"
     clip.selectedBackground = Qt.rgba(Qt.color(fg).r, Qt.color(fg).g, Qt.color(fg).b, 0.12); clip.selectedText = fg
     clip.open("{}")
     t1.start()
