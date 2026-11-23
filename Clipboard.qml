@@ -140,6 +140,26 @@ Item {
   // are re-read every 3 s (up to 10 min) until the new one shows up.
   property string ocrInstalling: ""
   property string ocrInstallingName: ""
+  // 1.31.0: languages switched off in Settings (state.json "ocrOff"; scan.sh
+  // reads it too), and the one being removed in the terminal.
+  property var ocrOff: []
+  property string ocrRemoving: ""
+  property string ocrRemovingName: ""
+  function toggleOcrUse(code) {
+    root.ocrOff = ClipboardHistory.toggleOcrOff(root.ocrOff, code, root.ocrInfo.installed)
+    root.writeState()
+    if (!ocrLangProc.running) ocrLangProc.running = true
+  }
+  function removeOcrLanguage(lang) {
+    if (!lang || lang.protect) return
+    var argv = ClipboardHistory.ocrInstallArgv(lang.code, root.pluginDir + "/ocr-install.sh", lang.name, true)
+    if (!argv.length) return
+    root.ocrRemoving = lang.code
+    root.ocrRemovingName = lang.name
+    root.ocrWatchTicks = 0
+    Quickshell.execDetached(argv)
+    ocrWatchTimer.restart()
+  }
   property int ocrWatchTicks: 0
   function installOcrLanguage(lang) {
     if (!lang || lang.installed) return
@@ -154,7 +174,17 @@ Item {
     root.notify("󰗊", "Installing " + lang.name + " (OCR)", "Check the command in the terminal and press Enter. Nice Clipboard picks it up when it is done.", 5000)
     ocrWatchTimer.restart()
   }
+  property string ocrInstalledSeen: ""
   function ocrInfoUpdated() {
+    // Installed set changed: sizes / "needed by" again.
+    var seen = root.ocrInfo.installed.join(",")
+    if (root.ocrInstalledSeen !== "" && seen !== root.ocrInstalledSeen && !ocrSizesProc.running) ocrSizesProc.running = true
+    root.ocrInstalledSeen = seen
+    if (root.ocrRemoving !== "" && root.ocrInfo.installed.indexOf(root.ocrRemoving) < 0) {
+      root.notify("󰩺", root.ocrRemovingName + " text recognition removed", "", 5000)
+      root.ocrRemoving = ""
+      if (root.ocrInstalling === "") ocrWatchTimer.stop()
+    }
     if (root.ocrInstalling === "" || root.ocrInfo.installed.indexOf(root.ocrInstalling) < 0) return
     ocrWatchTimer.stop()
     root.notify("󰄬", root.ocrInstallingName + " text recognition installed", "Screenshots and images copied from now on are read in " + root.ocrInstallingName + " too.", 6000)
@@ -248,7 +278,7 @@ Item {
   // Secondary text: same size and contrast as the stock Wi-Fi panel's
   // smallest text (foreground darkened 1.4x, no opacity); hints use the count size (Style.font.body).
   readonly property color dimText: Qt.darker(foreground, 1.4)
-  readonly property color urgent: Color.urgent
+  property color urgent: Color.urgent
   // Compact rows like the Wi-Fi list: one line plus a small padding.
   property int rowHeight: Math.max(Style.space(30), Style.font.title + Style.spacing.rowPaddingX + Style.space(6))
 
@@ -299,6 +329,7 @@ Item {
   function closeSettingsWindow() {
     root.settingsKeysRef = null
     root.settingsPaneFlickRef = null
+    root.uninstallArmed = ""
     settingsWindowLoader.active = false
   }
 
@@ -332,7 +363,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.30.0"
+  readonly property string pluginVersion: "1.31.0"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -354,6 +385,18 @@ Item {
     root.feedbackNote = "Sending…"
     root.feedbackSent = false
     feedbackProc.running = true
+    return true
+  }
+  // 1.31.0: Settings > Uninstall. First click arms a button (red, Omarchy's
+  // check icon), a second click within 3 s opens uninstall.sh in the
+  // terminal, which shows the commands and waits for Enter.
+  property string uninstallArmed: ""
+  Timer { id: uninstallArmTimer; interval: 3000; onTriggered: root.uninstallArmed = "" }
+  function requestUninstall(kind) {
+    if (root.uninstallArmed !== kind) { root.uninstallArmed = kind; uninstallArmTimer.restart(); return false }
+    root.uninstallArmed = ""
+    uninstallArmTimer.stop()
+    Quickshell.execDetached(ClipboardHistory.uninstallArgv(root.pluginDir + "/uninstall.sh", kind === "languages"))
     return true
   }
   function openUrl(url) {
@@ -514,7 +557,7 @@ Item {
   }
 
   function writeState() {
-    stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction, ocrDismissed: root.ocrDismissed, globalKeys: root.globalKeys,
+    stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction, ocrDismissed: root.ocrDismissed, ocrOff: root.ocrOff, globalKeys: root.globalKeys,
       updateCheck: root.updateCheck, updateLastCheck: root.updateLastCheck, updateLatest: root.updateLatest, updateGit: root.updateGit, updateDismissed: root.updateDismissed }) + "\n")
   }
 
@@ -524,6 +567,7 @@ Item {
     root.privateMode = st.private === true
     root.clickAction = ClipboardHistory.clickActionOf(st.clickAction)
     root.ocrDismissed = ClipboardHistory.ocrDismissedOf(st.ocrDismissed)
+    root.ocrOff = ClipboardHistory.ocrDismissedOf(st.ocrOff)
     root.updateCheck = st.updateCheck === true
     root.updateLastCheck = Number(st.updateLastCheck) || 0
     root.updateLatest = root.updateCheck && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(String(st.updateLatest || "")) ? String(st.updateLatest) : ""
@@ -649,7 +693,8 @@ Item {
 
   function saveHistory() {
     historyFile.setText(JSON.stringify(root.history) + "\n")
-    pruneTimer.restart()
+    // Image files of deleted items stay while Ctrl+Z can bring them back.
+    if (!root.undoStack.some(function(u) { return u.entry && u.entry.type === "image" })) pruneTimer.restart()
   }
 
   function addClipboardJson(line) {
@@ -700,13 +745,15 @@ Item {
     armTimer.stop()
   }
 
-  // First Del on a pinned row arms it (red, "Press Del again to delete"),
-  // a second Del within 3 s deletes it. Unpinned rows go at once.
-  function requestDelete(index) {
+  // The delete button (1.31.0): the first click arms it (red, Omarchy's
+  // check icon), a second click within 3 s deletes. It disarms when the
+  // mouse leaves it or the popup closes. Del on the keyboard: pinned rows
+  // arm first, unpinned ones go at once. Ctrl+Z brings deleted items back.
+  function requestDelete(index, byClick) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
     var armed = root.armedDeleteIndex === row.historyIndex
-    if (ClipboardHistory.deleteAction(row.pinned, armed) === "arm") {
+    if (ClipboardHistory.deleteAction(row.pinned || byClick === true, armed) === "arm") {
       root.selectAbsolute(index)
       root.armedDeleteIndex = row.historyIndex
       armTimer.restart()
@@ -741,9 +788,25 @@ Item {
     Qt.callLater(function() { searchInput.forceActiveFocus() })
   }
 
+  // 1.31.0: Ctrl+Z in the popup restores the last deleted items (up to 10,
+  // this session only), at their place and with their pin.
+  property var undoStack: []
+  function undoDelete() {
+    if (!root.undoStack.length) return false
+    var item = root.undoStack[root.undoStack.length - 1]
+    root.undoStack = root.undoStack.slice(0, -1)
+    var r = ClipboardHistory.restoreEntry(root.history, item)
+    root.history = r.history
+    root.saveHistory()
+    root.rebuildDisplay(true)
+    for (var i = 0; i < displayModel.count; i++) if (displayModel.get(i).historyIndex === r.index) { root.selectAbsolute(i); break }
+    return true
+  }
+
   function removeDisplayIndex(index) {
     if (index < 0 || index >= displayModel.count) return
     var row = displayModel.get(index)
+    root.undoStack = ClipboardHistory.pushUndo(root.undoStack, root.history[row.historyIndex], row.historyIndex)
     // Only the history changes; the system clipboard is left as it is.
     root.history = ClipboardHistory.removeEntryAt(root.history, row.historyIndex)
     root.saveHistory()
@@ -1175,7 +1238,7 @@ Item {
     return ClipboardHistory.rowActionNames(row.historyIndex === root.armedDeleteIndex, root.phoneOnline, row.entryType === "text", row.linkKind, row.copyText !== "", row.hasMarkdown, row.ocrText !== "")
   }
 
-  function runRowAction(name, index) {
+  function runRowAction(name, index, byClick) {
     if (name === "link") root.openLinkIndex(index)
     else if (name === "copytext") root.copyImageText(index)
     else if (name === "markdown") root.runOnIndex(index, "paste-md")
@@ -1183,7 +1246,7 @@ Item {
     else if (name === "ocrtext") root.copyOcrText(index)
     else if (name === "send") root.sendIndex(index)
     else if (name === "pin") root.togglePinDisplayIndex(index)
-    else if (name === "delete") root.requestDelete(index)
+    else if (name === "delete") root.requestDelete(index, byClick === true)
   }
 
   onSelectedIndexChanged: root.actionFocus = -1
@@ -1203,6 +1266,9 @@ Item {
     var alt = (event.modifiers & Qt.AltModifier) !== 0
     var shift = (event.modifiers & Qt.ShiftModifier) !== 0
 
+    // 1.31.0: Ctrl+Z undoes the last delete (else it edits the search text).
+    if (event.key === Qt.Key_Z && ctrl && !alt && !shift && root.undoDelete()) { event.accepted = true; return }
+
     // Left/Right walk the selected row's actions, Enter presses the focused one.
     if (root.cursorActive && displayModel.count > 0) {
       var step = ClipboardHistory.actionFocusStep(root.actionFocus, root.selectedActions.length, {
@@ -1211,11 +1277,8 @@ Item {
       })
       var pressed = step.trigger ? root.focusedAction : ""
       root.actionFocus = step.focus
-      if (pressed) {
-        var keepFocus = pressed === "delete" && root.armedDeleteIndex === -1
-        root.runRowAction(pressed, root.selectedIndex)
-        if (keepFocus && root.armedDeleteIndex !== -1) root.actionFocus = 0
-      }
+      // Enter on a focused button = a click (delete arms first).
+      if (pressed) root.runRowAction(pressed, root.selectedIndex, true)
       if (step.consumed) { event.accepted = true; return }
     }
     var slot = ClipboardHistory.slotFromKey(event.nativeScanCode, event.key)
@@ -1331,7 +1394,7 @@ Item {
     interval: 3000
     repeat: true
     onTriggered: {
-      if (++root.ocrWatchTicks > 200) { stop(); root.ocrInstalling = ""; return }
+      if (++root.ocrWatchTicks > 200) { stop(); root.ocrInstalling = ""; root.ocrRemoving = ""; return }
       if (!ocrLangProc.running) ocrLangProc.running = true
     }
   }
@@ -1790,9 +1853,21 @@ Item {
                   ]
                   delegate: infoActionRow
                 }
+                Text {
+                  objectName: "incognitoHint"
+                  x: Style.space(10)
+                  bottomPadding: Style.space(8)
+                  width: parent.width - Style.space(20)
+                  wrapMode: Text.Wrap
+                  textFormat: Text.PlainText
+                  text: "Turn it on or off with Ctrl+I in the popup, or right-click the clipboard icon in the top bar. Nothing is saved while it is on."
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
                 Repeater {
                   model: [
-                    { icon: "󰍽", label: "Click action", value: root.clickAction === "copy" ? "stays open" : "closes the popup" }
+                    { icon: "󰍽", label: "Left click action", value: root.clickAction === "copy" ? "stays open" : "closes the popup" }
                   ]
                   delegate: infoValueRow
                 }
@@ -1862,13 +1937,19 @@ Item {
             Column {
               id: sec
               width: parent ? parent.width : 0
-              spacing: Style.space(2)
+              // 1.31.0: laid out like the stock display panel: section
+              // header + pills (10 apart), separator, next section, 14 apart.
+              spacing: Style.space(14)
 
-                Repeater {
-                  model: [
-                    { icon: "󰋚", label: "Delete items after", value: "pinned items kept" }
-                  ]
-                  delegate: infoValueRow
+              Column {
+                width: parent.width
+                spacing: Style.space(10)
+                PanelSectionHeader {
+                  objectName: "clipKeepHeader"
+                  x: Style.space(10)
+                  text: "Automatically delete items after"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
                 }
 
                 // Auto-delete presets: the stock display panel's SCALE pills
@@ -1901,6 +1982,9 @@ Item {
                     }
                   }
                 }
+              }
+
+                PanelSeparator { width: parent.width; foreground: root.foreground }
 
                 Repeater {
                   model: [
@@ -1974,19 +2058,166 @@ Item {
             Column {
               id: sec
               width: parent ? parent.width : 0
-              spacing: Style.space(2)
+              // 1.31.0: installed languages as rows (in use, size on disk,
+              // Remove), then "Add language" pills for the others. Sections
+              // like the stock display panel: header + content 10 apart,
+              // separator, 14 apart. Only installed packs are ever used;
+              // OMARCHY_OCR_LANGS, if set, decides like in Omarchy's own text
+              // capture (Super+Ctrl+Print).
+              spacing: Style.space(14)
+              readonly property var installedRows: ClipboardHistory.ocrInstalledRows(root.ocrInfo.installed, root.ocrSizes, root.ocrOff, root.ocrInfo.env)
+              readonly property var availableRows: ClipboardHistory.ocrAvailableRows(root.ocrInfo.installed, root.ocrSizes)
 
-                // OCR languages (1.20.0). Only installed packs are used,
-                // nothing is downloaded; OMARCHY_OCR_LANGS picks them, like
-                // Omarchy's own text capture (Super+Ctrl+Print). Popular
-                // packs are listed; a click copies its pacman command.
-                Repeater {
-                  model: [
-                    { icon: "󰗊", label: "Installed languages", value: root.ocrInfo.installed.length ? root.ocrInfo.installed.join(", ") : "none (tesseract missing)" },
-                    { icon: "󰄬", label: root.ocrInfo.env ? "Used (OMARCHY_OCR_LANGS)" : "Used", value: root.ocrInfo.used || "–" }
-                  ]
-                  delegate: infoValueRow
+              Column {
+                width: parent.width
+                spacing: Style.space(10)
+                PanelSectionHeader {
+                  x: Style.space(10)
+                  text: "Installed languages"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
                 }
+                Text {
+                  objectName: "clipOcrNone"
+                  visible: sec.installedRows.length === 0
+                  x: Style.space(10)
+                  width: parent.width - Style.space(20)
+                  wrapMode: Text.WordWrap
+                  textFormat: Text.PlainText
+                  text: "None: tesseract is not installed (sudo pacman -S tesseract tesseract-data-eng)."
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                }
+                Column {
+                  width: parent.width
+                  spacing: Style.space(2)
+                  Repeater {
+                    model: sec.installedRows
+                    delegate: Rectangle {
+                      id: langRow
+                      required property var modelData
+                      objectName: "clipOcrInstalled"
+                      readonly property string code: modelData.code
+                      readonly property bool canToggle: modelData.toggleNote === ""
+                      width: parent.width
+                      height: root.rowHeight
+                      radius: root.cornerRadius
+                      color: langMouse.containsMouse ? Util.alpha(root.foreground, 0.05) : "transparent"
+                      MouseArea { id: langMouse; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+
+                      Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Style.space(10)
+                        anchors.verticalCenter: parent.verticalCenter
+                        textFormat: Text.PlainText
+                        text: langRow.modelData.name
+                        color: langRow.modelData.inUse ? root.foreground : root.dimText
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.body
+                      }
+                      Row {
+                        anchors.right: parent.right
+                        anchors.rightMargin: Style.space(10)
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Style.space(14)
+                        Text {
+                          objectName: "clipOcrSize"
+                          anchors.verticalCenter: parent.verticalCenter
+                          textFormat: Text.PlainText
+                          text: langRow.modelData.size
+                          color: root.dimText
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.caption
+                        }
+                        // In use: the stock-looking switch from the
+                        // incognito row; clicking it switches the language.
+                        Item {
+                          objectName: "clipOcrUse"
+                          readonly property bool on: langRow.modelData.inUse
+                          anchors.verticalCenter: parent.verticalCenter
+                          width: useLabel.implicitWidth + Style.space(6) + useSwitch.width
+                          height: root.rowHeight
+                          opacity: langRow.canToggle ? 1 : 0.45
+                          Text {
+                            id: useLabel
+                            anchors.verticalCenter: parent.verticalCenter
+                            textFormat: Text.PlainText
+                            text: "in use"
+                            color: root.dimText
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                          }
+                          Rectangle {
+                            id: useSwitch
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.round(Style.font.body * 2.2)
+                            height: Math.round(Style.font.body * 1.2)
+                            radius: height / 2
+                            color: parent.on ? root.accent : Util.alpha(root.foreground, 0.22)
+                            Rectangle {
+                              width: parent.height - Style.space(4)
+                              height: width
+                              radius: width / 2
+                              y: Style.space(2)
+                              x: parent.parent.on ? parent.width - width - Style.space(2) : Style.space(2)
+                              color: parent.parent.on ? root.background : root.foreground
+                              Behavior on x { NumberAnimation { duration: 120 } }
+                            }
+                          }
+                          MouseArea {
+                            anchors.fill: parent
+                            enabled: langRow.canToggle
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.toggleOcrUse(langRow.code)
+                          }
+                        }
+                        Button {
+                          objectName: "clipOcrRemove"
+                          visible: langRow.modelData.protect === ""
+                          anchors.verticalCenter: parent.verticalCenter
+                          text: root.ocrRemoving === langRow.code ? "Removing…" : "Remove"
+                          iconText: "󰩺"
+                          fontSize: Style.font.caption
+                          iconSize: Style.font.caption
+                          foreground: root.foreground
+                          fontFamily: root.fontFamily
+                          horizontalPadding: Style.spacing.sm
+                          verticalPadding: Style.spacing.controlPaddingY
+                          bordered: true
+                          tooltipText: "Opens a terminal: sudo pacman -R tesseract-data-" + langRow.code
+                          onClicked: root.removeOcrLanguage(langRow.modelData)
+                        }
+                        Text {
+                          objectName: "clipOcrProtected"
+                          visible: langRow.modelData.protect !== ""
+                          anchors.verticalCenter: parent.verticalCenter
+                          textFormat: Text.PlainText
+                          text: langRow.modelData.protect
+                          color: root.dimText
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.caption
+                        }
+                      }
+                    }
+                  }
+                }
+                Text {
+                  objectName: "clipOcrUseNote"
+                  visible: sec.installedRows.length > 0
+                  x: Style.space(10)
+                  width: parent.width - Style.space(20)
+                  wrapMode: Text.WordWrap
+                  textFormat: Text.PlainText
+                  text: root.ocrInfo.env
+                    ? "OMARCHY_OCR_LANGS=" + root.ocrInfo.env + " is set, so it decides which languages are used."
+                    : "Screenshots and images are read in every language that is in use (at least one stays on); each extra one makes reading a little slower. Sizes are the space on disk (pacman)."
+                  color: root.dimText
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+              }
 
                 // 1.27.0: suggestions from the locale / keyboard layout /
                 // dictionaries. Copy puts the pacman command on the
@@ -2047,26 +2278,30 @@ Item {
                   }
                 }
 
+              PanelSeparator { width: parent.width; foreground: root.foreground; visible: sec.availableRows.length > 0 }
+
+              Column {
+                width: parent.width
+                spacing: Style.space(10)
+                visible: sec.availableRows.length > 0
+                PanelSectionHeader {
+                  x: Style.space(10)
+                  text: "Add language"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                }
                 Text {
                   objectName: "clipOcrHelp"
-                  width: parent.width
+                  x: Style.space(10)
+                  width: parent.width - Style.space(20)
                   wrapMode: Text.WordWrap
                   textFormat: Text.PlainText
-                  text: "Click a language to install it: a terminal opens and asks for your password (official Arch package)."
-                        + (Object.keys(root.ocrSizes).length ? " Sizes from pacman: space on disk when installed, download size otherwise." : "")
+                  text: "Click one to install it: a terminal opens, shows the command and asks for your password (official Arch package)."
+                        + (Object.keys(root.ocrSizes).length ? " Sizes are the download (pacman)." : "")
                   color: root.dimText
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
-                  topPadding: Style.space(6)
-                  bottomPadding: Style.space(4)
-                  leftPadding: Style.space(10)
-                  rightPadding: Style.space(10)
                 }
-
-                // 1.25.0: popular languages as stock pills, three per row
-                // (was one full-width row each). Installed = highlighted with
-                // a check; a click on any other copies its pacman command
-                // (shown in the tooltip).
                 Grid {
                   id: ocrLangGrid
                   objectName: "clipOcrLangGrid"
@@ -2075,20 +2310,15 @@ Item {
                   columns: 3
                   spacing: Style.spacing.xs
                   readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
-
                   Repeater {
-                    model: ClipboardHistory.ocrLanguageRows(root.ocrInfo.installed)
-
+                    model: sec.availableRows
                     Button {
                       required property var modelData
                       objectName: "clipOcrLang"
                       readonly property string code: modelData.code
-                      readonly property string cmd: modelData.cmd
-                      readonly property bool installed: modelData.installed
                       width: ocrLangGrid.cellWidth
-                      readonly property string size: ClipboardHistory.ocrSizeLabel(root.ocrSizes, code, installed)
-                      text: modelData.name + (size !== "" ? " · " + size : "")
-                      iconText: installed ? "󰄬" : ""
+                      text: modelData.name + (modelData.size !== "" ? " · " + modelData.size : "")
+                      iconText: root.ocrInstalling === code ? "󰔟" : "󰇚"
                       fontSize: Style.font.caption
                       iconSize: Style.font.caption
                       foreground: root.foreground
@@ -2096,13 +2326,73 @@ Item {
                       horizontalPadding: Style.spacing.sm
                       verticalPadding: Style.spacing.controlPaddingY
                       bordered: true
-                      active: installed
-                      readonly property string sizeTip: ClipboardHistory.ocrSizeTip(root.ocrSizes, code)
-                      tooltipText: (installed ? "Installed" : (root.ocrInstalling === code ? "Installing… (see the terminal)" : "Click to install (pacman, asks for your password)")) + (sizeTip !== "" ? " · " + sizeTip : "")
-                      onClicked: root.installOcrLanguage(modelData)
+                      tooltipText: root.ocrInstalling === code ? "Installing… (see the terminal)" : "Install: sudo pacman -S --needed tesseract-data-" + code
+                      onClicked: root.installOcrLanguage({ code: modelData.code, name: modelData.name, installed: false })
                     }
                   }
                 }
+              }
+            }
+          }
+
+          Component {
+            id: secUninstall
+            Column {
+              id: sec
+              width: parent ? parent.width : 0
+              spacing: Style.space(10)
+              Repeater {
+                model: [
+                  { kind: "plugin", label: "Uninstall plugin", text: "Removes Nice Clipboard, the shortcuts it added, its clipboard history and settings. Omarchy's own clipboard comes back." },
+                  { kind: "languages", label: "Uninstall plugin and languages", text: "The same, plus the text recognition languages Nice Clipboard installed. Languages that were there before, or that something else needs (like English for Omarchy's screenshot text), stay." }
+                ]
+                delegate: Column {
+                  required property var modelData
+                  x: Style.space(10)
+                  width: sec.width - Style.space(20)
+                  spacing: Style.space(6)
+                  bottomPadding: Style.space(8)
+                  // Armed: red under the button, so it stays red while hovered
+                  // (the stock Button swaps its fill for the hover fill).
+                  Item {
+                    width: uninstallBtn.width
+                    height: uninstallBtn.height
+                    Rectangle {
+                      objectName: "uninstallArmedFill"
+                      anchors.fill: parent
+                      radius: Style.cornerRadius
+                      color: root.urgent
+                      visible: uninstallBtn.armed
+                    }
+                    Button {
+                      id: uninstallBtn
+                      objectName: "uninstallButton"
+                      readonly property bool armed: root.uninstallArmed === modelData.kind
+                      text: armed ? "Click again to uninstall" : modelData.label
+                      iconText: armed ? "󰄬" : "󰆴"
+                      fontSize: Style.font.body
+                      iconSize: Style.font.body
+                      foreground: armed ? "#ffffff" : root.foreground
+                      background: "transparent"
+                      fontFamily: root.fontFamily
+                      horizontalPadding: Style.spacing.sm
+                      verticalPadding: Style.spacing.controlPaddingY
+                      bordered: true
+                      onClicked: root.requestUninstall(modelData.kind)
+                      onHovered: function(isHovered) { if (!isHovered && armed) root.uninstallArmed = "" }
+                    }
+                  }
+                  Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    textFormat: Text.PlainText
+                    text: modelData.text
+                    color: root.dimText
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+                }
+              }
             }
           }
 
@@ -2681,7 +2971,7 @@ Item {
                   objectName: "clipRow"
                   foreground: root.foreground
                   accent: root.accent
-                  color: armed ? Util.alpha(root.urgent, 0.85) : (hasCursor ? fill : "transparent")
+                  color: hasCursor ? fill : "transparent"
 
                   // On the clipboard now: a small accent bar at the left edge.
                   Rectangle {
@@ -2780,13 +3070,12 @@ Item {
                       objectName: "clipRowText"
                       width: parent.width - actions.width - parent.spacing - (row.previewImage.length > 0 ? parent.height + parent.spacing : 0)
                       height: parent.height
-                      text: row.armed ? "Press Del again to delete" : row.previewText
-                      color: row.armed ? "#ffffff" : root.foreground
+                      text: row.previewText
+                      color: root.foreground
                       fontFamily: root.fontFamily
                       pixelSize: Style.font.body
-                      bold: row.armed
-                      running: !row.armed && !root.dragMoved && (rowMouse.containsMouse || row.hasCursor)
-                      opacity: !row.armed && (row.entryType === "image" || row.entryType === "file") ? 0.72 : 1.0
+                      running: !root.dragMoved && (rowMouse.containsMouse || row.hasCursor)
+                      opacity: row.entryType === "image" || row.entryType === "file" ? 0.72 : 1.0
                     }
 
                     // Pin + delete buttons (on hover/cursor), shortcut hint otherwise.
@@ -2797,7 +3086,7 @@ Item {
 
                       // "From phone" label (Flux), on text that arrived from the phone.
                       Item {
-                        visible: row.fromPhone && !row.armed
+                        visible: row.fromPhone
                         width: visible ? phoneLabel.implicitWidth + Style.space(8) : 0
                         height: actions.height
 
@@ -2819,13 +3108,13 @@ Item {
                       Repeater {
                         model: [
                           { glyph: row.linkKind === "mail" ? "󰇮" : row.linkKind === "phone" ? "󰏲" : row.linkKind === "path" ? "󰉋" : row.linkKind === "maps" ? "󰍎" : row.linkKind === "github" ? "󰊤" : "󰏌",
-                            tip: "link", show: row.showActions && !row.armed && row.linkKind !== "" && row.linkKind !== "color",
+                            tip: "link", show: row.showActions && row.linkKind !== "" && row.linkKind !== "color",
                             text: ClipboardHistory.targetTooltip(row.linkKind, row.linkLabel) },
-                          { glyph: "", tip: "link", swatch: true, show: !row.armed && row.linkKind === "color", text: ClipboardHistory.targetTooltip("color", row.linkLabel) },
-                          { glyph: row.copyWifi ? "󰌾" : "󰆏", tip: "copytext", show: row.showActions && !row.armed && row.copyText !== "", text: row.copyTip },
-                          { glyph: "󰆏", tip: "ocrtext", show: row.showActions && !row.armed && row.ocrText !== "", text: row.ocrTip },
-                          { glyph: "\uf48a", tip: "markdown", show: row.showActions && !row.armed && row.hasMarkdown, text: "Paste as Markdown" },
-                          { glyph: "󰦨", tip: "plaintext", show: row.showActions && !row.armed && row.hasMarkdown, text: "Paste as plain text" }
+                          { glyph: "", tip: "link", swatch: true, show: row.linkKind === "color", text: ClipboardHistory.targetTooltip("color", row.linkLabel) },
+                          { glyph: row.copyWifi ? "󰌾" : "󰆏", tip: "copytext", show: row.showActions && row.copyText !== "", text: row.copyTip },
+                          { glyph: "󰆏", tip: "ocrtext", show: row.showActions && row.ocrText !== "", text: row.ocrTip },
+                          { glyph: "\uf48a", tip: "markdown", show: row.showActions && row.hasMarkdown, text: "Paste as Markdown" },
+                          { glyph: "󰦨", tip: "plaintext", show: row.showActions && row.hasMarkdown, text: "Paste as plain text" }
                         ]
                         delegate: actionDelegate
                       }
@@ -2833,7 +3122,7 @@ Item {
                       // Paste queue position (1, 2, 3 …), accent badge.
                       Item {
                         objectName: "clipQueueBadge"
-                        visible: row.queueNo > 0 && !row.armed
+                        visible: row.queueNo > 0
                         width: visible ? queueBadge.width + Style.space(6) : 0
                         height: actions.height
 
@@ -2862,7 +3151,7 @@ Item {
 
                       Item {
                         readonly property string hint: ClipboardHistory.slotHint(root.history, row.historyIndex)
-                        visible: !row.showActions && !row.armed && row.queueNo === 0 && hint !== ""
+                        visible: !row.showActions && row.queueNo === 0 && hint !== ""
                         width: visible ? slotHint.implicitWidth + Style.space(6) : 0
                         height: actions.height
 
@@ -2880,9 +3169,9 @@ Item {
 
                       Repeater {
                         model: [
-                          { glyph: "󰄜", tip: "send", show: row.showActions && !row.armed && root.phoneOnline && row.entryType === "text", text: "Send via Flux" },
-                          { glyph: "󰩺", tip: "delete", show: row.showActions || row.armed, text: row.armed ? "Press again to delete" : "Delete" },
-                          { glyph: row.pinned ? "󰐃" : "󰤱", tip: "pin", show: !row.armed && (row.showActions || row.pinned), text: row.pinned ? "Unpin" : "Pin" }
+                          { glyph: "󰄜", tip: "send", show: row.showActions && root.phoneOnline && row.entryType === "text", text: "Send via Flux" },
+                          { glyph: row.armed ? "󰄬" : "󰩺", tip: "delete", show: row.showActions || row.armed, text: row.armed ? "Click again to delete" : "Delete" },
+                          { glyph: row.pinned ? "󰐃" : "󰤱", tip: "pin", show: (row.showActions || row.pinned), text: row.pinned ? "Unpin" : "Pin" }
                         ]
                         delegate: actionDelegate
                       }
@@ -2899,6 +3188,17 @@ Item {
                           readonly property bool keyFocused: row.hasCursor && root.focusedAction === modelData.tip
 
                           // Stock icon button: hover fill/border and stock tooltip.
+                          // 1.31.0: an armed delete is a red button with
+                          // Omarchy's check icon; a second click deletes.
+                          Rectangle {
+                            objectName: "clipDeleteArmed"
+                            visible: actionSlot.modelData.tip === "delete" && row.armed
+                            anchors.centerIn: actionButton
+                            width: actionButton.width
+                            height: actionButton.height
+                            radius: actionButton.radius
+                            color: root.urgent
+                          }
                           PanelActionButton {
                             id: actionButton
                             objectName: "clipAction"
@@ -2908,11 +3208,14 @@ Item {
                             tooltipText: actionSlot.modelData.text
                             fontFamily: root.fontFamily
                             fontSize: Style.font.subtitle
-                            foreground: row.armed ? "#ffffff" : (actionSlot.modelData.tip === "pin" && row.pinned ? root.accent : root.foreground)
-                            hoverColor: row.armed ? "#ffffff" : root.foreground
+                            readonly property bool armedDelete: actionSlot.modelData.tip === "delete" && row.armed
+                            foreground: armedDelete ? "#ffffff" : (actionSlot.modelData.tip === "pin" && row.pinned ? root.accent : root.foreground)
+                            hoverColor: armedDelete ? "#ffffff" : root.foreground
+                            // Leaving the armed button disarms it.
+                            onHovered: function(isHovered) { if (!isHovered && armedDelete) root.disarmDelete() }
                             hasCursor: actionSlot.keyFocused
                             bordered: actionSlot.keyFocused
-                            onClicked: root.runRowAction(actionSlot.modelData.tip, row.index)
+                            onClicked: root.runRowAction(actionSlot.modelData.tip, row.index, true)
                           }
 
                           // Colour code: the button is the colour (stock-sized
@@ -3225,10 +3528,11 @@ Item {
     { key: "general", icon: "󰒓", label: "General", desc: "Incognito and what a click on an item does.", comp: secGeneral },
     { key: "history", icon: "󰋚", label: "History", desc: "How long items are kept, and clearing the history. Pinned items always stay.", comp: secHistory },
     { key: "flux", icon: "󰄜", label: "Flux (phone)", desc: "Clipboard sync with your phone through Flux.", comp: secFlux },
-    { key: "ocr", icon: "󰗊", label: "Text recognition (OCR)", title: "Languages for text recognition (OCR)", desc: "Languages used to read text in screenshots and images. Click one to install it.", comp: secOcr },
+    { key: "ocr", icon: "󰗊", label: "Text recognition (OCR)", title: "Languages for text recognition (OCR)", desc: "Languages used to read text in screenshots and images: switch them on or off, remove them, or add new ones.", comp: secOcr },
     { key: "filters", icon: "󰍉", label: "Search filters", desc: "Type these in the search field; combine them with text, e.g. type:link github.", comp: secFilters },
     { key: "shortcuts", icon: "󰌌", label: "Shortcuts", desc: "Keys in the popup and everywhere.", comp: secShortcuts },
-    { key: "feedback", icon: "󰆈", label: "Feedback", desc: "Send feedback straight to the developer from here, or check out the <a href=\"https://github.com/roehrbacher/Nice-Clipboard\">GitHub page</a>.", comp: secFeedback }
+    { key: "feedback", icon: "󰆈", label: "Feedback", desc: "Send feedback straight to the developer from here, or check out the <a href=\"https://github.com/roehrbacher/Nice-Clipboard\">GitHub page</a>.", comp: secFeedback },
+    { key: "uninstall", icon: "󰆴", label: "Uninstall", desc: "Remove Nice Clipboard from this computer. A terminal shows every command before anything runs.", comp: secUninstall }
   ]
   function showSettingsSection(i) {
     var n = root.settingsSections.length
@@ -3461,9 +3765,11 @@ Item {
             linkColor: root.accent
             onLinkActivated: function(link) { root.openUrl(link) }
             text: settingsPane.section.desc
-            color: root.dimText
+            // 1.31.0: like the vanilla shell's window header description
+            // (dev gallery): bodySmall, foreground darkened 1.4.
+            color: Qt.darker(root.foreground, 1.4)
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.bodySmall
           }
           Item { width: 1; height: Style.space(6) }
           PanelSeparator { width: parent.width; foreground: root.foreground }

@@ -174,7 +174,7 @@ assert.strictEqual(H.kineticFlickVelocity(100, 10), 0, "slow drag: no flick")
 assert.deepStrictEqual(H.rowActionNames(false, true, true), ["send", "delete", "pin"])
 assert.deepStrictEqual(H.rowActionNames(false, false, true), ["delete", "pin"], "no phone: no send")
 assert.deepStrictEqual(H.rowActionNames(false, true, false), ["delete", "pin"], "images are not sent")
-assert.deepStrictEqual(H.rowActionNames(true, true, true), ["delete"], "armed delete: only trash")
+assert.deepStrictEqual(H.rowActionNames(true, true, true), ["send", "delete", "pin"], "1.31.0: armed delete keeps the buttons in place")
 
 // 1.3.2: row actions by keyboard
 {
@@ -256,7 +256,7 @@ console.log("headings: ok")
     assert.strictEqual(L(f), null, "not a link: " + JSON.stringify(f))
   assert.deepStrictEqual(H.rowActionNames(false, true, true, "url"), ["link", "send", "delete", "pin"], "link button first (left)")
   assert.deepStrictEqual(H.rowActionNames(false, false, true, ""), ["delete", "pin"])
-  assert.deepStrictEqual(H.rowActionNames(true, true, true, "url"), ["delete"], "armed: only trash")
+  assert.deepStrictEqual(H.rowActionNames(true, true, true, "url"), ["link", "send", "delete", "pin"], "1.31.0: armed keeps all")
   console.log("links: ok")
 }
 
@@ -666,6 +666,7 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.ok(argv[2].includes("--app-id=org.omarchy.terminal") && argv[2].includes("uwsm-app"), "Omarchy floating terminal")
   assert.ok(!argv[2].includes("deu") && !argv[2].includes("omarchy-pkg-add"), "code passed as argv, own script, no omarchy-pkg-add")
   assert.deepStrictEqual(argv.slice(3), [script, "deu", "German"])
+  assert.deepStrictEqual(H.ocrInstallArgv("deu", script, "German", true).slice(3), [script, "--remove", "deu", "German"], "1.31.0 remove")
   assert.deepStrictEqual(H.ocrInstallArgv("deu", ""), [], "needs the script path")
   for (const bad of ["", "de", "deu; rm -rf ~", "deu'", "DEU", "../x", "deu fra"]) assert.deepStrictEqual(H.ocrInstallArgv(bad, script), [], "rejected: " + bad)
 
@@ -738,4 +739,37 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.ok(H.updateHowTo(true).includes("omarchy plugin update timon.clipboard"))
   assert.ok(H.updateHowTo(false).includes("GitHub page"))
   console.log("ok 1.30.0 feedback keys, OCR sizes, update check")
+
+  // 1.31.0: undo delete
+  const h0 = [{ type: "text", text: "a" }, { type: "text", text: "p", pinned: true }, { type: "text", text: "b" }]
+  let st = H.pushUndo([], h0[1], 1)
+  const h1 = H.removeEntryAt(h0, 1)
+  const r = H.restoreEntry(h1, st[st.length - 1])
+  assert.deepStrictEqual(r.history, h0, "back at its place, still pinned"); assert.strictEqual(r.index, 1)
+  const r2 = H.restoreEntry([{ type: "text", text: "p" }, { type: "text", text: "a" }], { entry: h0[1], index: 1 })
+  assert.deepStrictEqual(r2.history.map(e => e.text), ["a", "p"], "a newer copy of the same item is replaced, not doubled")
+  assert.strictEqual(H.restoreEntry([], { entry: h0[0], index: 9 }).index, 0, "index clamped")
+  for (let i = 0; i < 15; i++) st = H.pushUndo(st, { type: "text", text: "x" + i }, 0)
+  assert.strictEqual(st.length, H.UNDO_MAX); assert.strictEqual(st[st.length - 1].entry.text, "x14")
+  assert.strictEqual(H.deleteAction(true, false), "arm", "button click / pinned: arm first")
+  // 1.31.0: OCR language rows
+  const packs = { eng: { installed: "22.38 MiB", requiredBy: ["omasnap", "tesseract"] }, deu: { installed: "14.72 MiB", download: "5.94 MiB", requiredBy: ["tesseract"] }, ita: { installed: "15.21 MiB", requiredBy: ["tesseract"] }, fra: { download: "5.11 MiB" } }
+  const rows = H.ocrInstalledRows(["deu", "eng", "ita"], packs, ["ita"], "")
+  assert.deepStrictEqual(rows.map(x => x.name), ["English", "German", "Italian"])
+  assert.strictEqual(rows[0].protect, "Needed by omasnap"); assert.strictEqual(rows[1].protect, "")
+  assert.strictEqual(rows[1].size, "15 MB"); assert.strictEqual(rows[2].inUse, false); assert.strictEqual(rows[0].inUse, true)
+  assert.strictEqual(H.ocrInstalledRows(["deu"], packs, [], "")[0].protect, "Tesseract needs at least one language")
+  assert.strictEqual(H.ocrInstalledRows(["deu", "eng"], packs, ["eng"], "")[0].toggleNote, "", "off one can be turned on")
+  assert.strictEqual(H.ocrInstalledRows(["deu", "eng"], packs, ["eng"], "")[1].toggleNote, "At least one language stays on")
+  assert.strictEqual(H.ocrInstalledRows(["deu", "eng"], packs, [], "deu")[0].inUse, false, "OMARCHY_OCR_LANGS decides")
+  assert.ok(H.ocrAvailableRows(["deu", "eng", "ita"], packs).every(x => ["deu", "eng", "ita"].indexOf(x.code) < 0), "only not installed ones to add")
+  assert.strictEqual(H.ocrAvailableRows(["deu"], packs).find(x => x.code === "fra").size, "5.4 MB", "download size")
+  assert.deepStrictEqual(H.toggleOcrOff([], "ita", ["eng", "ita"]), ["ita"])
+  assert.deepStrictEqual(H.toggleOcrOff(["ita"], "ita", ["eng", "ita"]), [])
+  assert.deepStrictEqual(H.toggleOcrOff(["ita"], "eng", ["eng", "ita"]), ["ita"], "last one stays on")
+  assert.deepStrictEqual(H.toggleOcrOff(["spa"], "ita", ["eng", "ita"]), ["ita"], "stale codes dropped")
+  const un = H.uninstallArgv("/p/uninstall.sh", true)
+  assert.deepStrictEqual(un.slice(3), ["/p/uninstall.sh", "--languages"]); assert.ok(un[2].includes("org.omarchy.terminal"))
+  assert.deepStrictEqual(H.uninstallArgv("/p/uninstall.sh", false).slice(3), ["/p/uninstall.sh"])
+  console.log("ok 1.31.0 undo delete, OCR language rows, uninstall argv")
 }

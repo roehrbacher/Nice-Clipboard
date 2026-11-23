@@ -174,6 +174,30 @@ function removeEntryAt(history, index) {
   return next
 }
 
+// 1.31.0: undo delete (Ctrl+Z in the popup). The popup keeps the last few
+// deleted entries with their history index; restoring puts the entry back
+// where it was (pinned state included). If the same item was copied again
+// meanwhile, that copy is dropped so it is not listed twice.
+var UNDO_MAX = 10
+function pushUndo(stack, entry, index) {
+  var s = Array.isArray(stack) ? stack.slice() : []
+  if (!entry) return s
+  s.push({ entry: entry, index: Math.max(0, Number(index) || 0) })
+  return s.slice(-UNDO_MAX)
+}
+function restoreEntry(history, item) {
+  var values = Array.isArray(history) ? history.slice() : []
+  if (!item || !item.entry) return { history: values, index: -1 }
+  var key = entryKey(normalizeEntry(item.entry) || {})
+  for (var i = values.length - 1; i >= 0; i--) {
+    var e = normalizeEntry(values[i])
+    if (e && entryKey(e) === key) values.splice(i, 1)
+  }
+  var at = Math.min(Math.max(0, Number(item.index) || 0), values.length)
+  values.splice(at, 0, item.entry)
+  return { history: values, index: at }
+}
+
 function togglePinAt(history, index) {
   var values = Array.isArray(history) ? history : []
   var target = Number(index)
@@ -643,13 +667,69 @@ function ocrSizeTip(sizes, code) {
 // The script shows the exact pacman command and waits for Enter before
 // sudo asks for the password. Plain xdg-terminal-exec when uwsm-app is
 // missing. Arguments go as argv, never through a shell string.
-function ocrInstallArgv(code, script, name) {
+// Omarchy's floating terminal running one of the plugin's scripts; every
+// argument goes through argv, never into the shell text.
+function terminalArgv(script, args) {
+  if (!script) return []
+  var launch = 'if command -v uwsm-app >/dev/null 2>&1; then '
+    + 'exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title="Nice Clipboard" -e "$0" "$@"; '
+    + 'else exec setsid xdg-terminal-exec -e "$0" "$@"; fi'
+  return ["bash", "-c", launch, String(script)].concat((args || []).map(String))
+}
+// 1.31.0: remove = true gives `ocr-install.sh --remove <code> <name>`.
+function ocrInstallArgv(code, script, name, remove) {
   var c = String(code || "")
   if (!/^[a-z]{3}(_[a-z]{3,4})?$/.test(c) || !script) return []
-  var launch = 'if command -v uwsm-app >/dev/null 2>&1; then '
-    + 'exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title="Nice Clipboard" -e "$0" "$1" "$2"; '
-    + 'else exec setsid xdg-terminal-exec -e "$0" "$1" "$2"; fi'
-  return ["bash", "-c", launch, String(script), c, String(name || c)]
+  return terminalArgv(script, (remove ? ["--remove"] : []).concat([c, String(name || c)]))
+}
+// 1.31.0: Settings > Uninstall: uninstall.sh [--languages] in the terminal.
+function uninstallArgv(script, languages) {
+  return terminalArgv(script, languages ? ["--languages"] : [])
+}
+
+// 1.31.0: Text recognition page. Installed packs as rows (name, size on
+// disk, in use, removable or why not), the others as "Add language" pills.
+// packs = scan.sh --sizes ({code: {download, installed, requiredBy:[...]}}),
+// off = codes switched off in settings, env = OMARCHY_OCR_LANGS if set.
+function ocrLanguageName(code) {
+  for (var i = 0; i < OCR_LANGUAGES.length; i++) if (OCR_LANGUAGES[i].code === code) return OCR_LANGUAGES[i].name
+  return code
+}
+function ocrInstalledRows(installed, packs, off, env) {
+  var have = (installed || []).slice()
+  var offList = off || []
+  var envList = env ? String(env).split("+") : null
+  var used = have.filter(function(c) { return envList ? envList.indexOf(c) >= 0 : offList.indexOf(c) < 0 })
+  return have.map(function(c) {
+    var p = (packs && packs[c]) || {}
+    var deps = (p.requiredBy || []).filter(function(d) { return d !== "tesseract" })
+    var inUse = used.indexOf(c) >= 0
+    var protect = deps.length ? "Needed by " + deps.join(", ")
+      : (have.length === 1 ? "Tesseract needs at least one language" : "")
+    return {
+      code: c, name: ocrLanguageName(c), size: megabytes(pacmanBytes(p.installed)),
+      inUse: inUse,
+      // The last language in use cannot be switched off; with
+      // OMARCHY_OCR_LANGS set, that variable decides.
+      toggleNote: envList ? "Set by OMARCHY_OCR_LANGS" : (inUse && used.length === 1 ? "At least one language stays on" : ""),
+      protect: protect
+    }
+  }).sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0 })
+}
+function ocrAvailableRows(installed, packs) {
+  var have = installed || []
+  return OCR_LANGUAGES.filter(function(l) { return have.indexOf(l.code) < 0 }).map(function(l) {
+    var p = packs && packs[l.code]
+    return { code: l.code, name: l.name, size: p ? megabytes(pacmanBytes(p.download)) : "" }
+  }).sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0 })
+}
+function toggleOcrOff(off, code, installed) {
+  var list = (off || []).filter(function(c) { return (installed || []).indexOf(c) >= 0 })
+  var i = list.indexOf(code)
+  if (i >= 0) { list.splice(i, 1); return list }
+  var on = (installed || []).filter(function(c) { return list.indexOf(c) < 0 })
+  if (on.length <= 1) return list
+  return list.concat([code])
 }
 
 // ---- click action (1.18.0) ------------------------------------------------
@@ -1030,8 +1110,9 @@ function phoneGlyph(state) {
 // Left/Right keep moving the text cursor while you edit the search.
 // Row actions left to right: phone (send), trash, pin. Pin is last so it
 // stays in the slot where a pinned row shows it when not hovered.
+// 1.31.0: an armed delete keeps the other buttons (only it turns red), so
+// nothing moves under the mouse between the two clicks. "armed" is unused.
 function rowActionNames(armed, phoneOnline, isText, linkKind, hasCopyText, hasMarkdown, hasOcr) {
-  if (armed) return ["delete"]
   var out = []
   if (linkKind) out.push("link")
   if (hasCopyText) out.push("copytext")
@@ -1391,6 +1472,9 @@ if (typeof module !== "undefined") {
     addEntry: addEntry,
     pruneToLimit: pruneToLimit,
     removeEntryAt: removeEntryAt,
+    UNDO_MAX: UNDO_MAX,
+    pushUndo: pushUndo,
+    restoreEntry: restoreEntry,
     togglePinAt: togglePinAt,
     reorderPinned: reorderPinned,
     escapeAction: escapeAction,
@@ -1484,6 +1568,12 @@ if (typeof module !== "undefined") {
     dragPlan: dragPlan,
     searchFilterExamples: SEARCH_FILTER_EXAMPLES,
     ocrInstallArgv: ocrInstallArgv,
+    terminalArgv: terminalArgv,
+    uninstallArgv: uninstallArgv,
+    ocrLanguageName: ocrLanguageName,
+    ocrInstalledRows: ocrInstalledRows,
+    ocrAvailableRows: ocrAvailableRows,
+    toggleOcrOff: toggleOcrOff,
     ocrHintLanguage: ocrHintLanguage,
     ocrSuggestions: ocrSuggestions,
     ocrDemoSuggestion: ocrDemoSuggestion,

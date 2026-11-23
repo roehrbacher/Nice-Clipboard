@@ -2,6 +2,18 @@
 
 Newest first. Older history is in the git log.
 
+## 1.31.0
+
+- Delete button per row: the first click turns it red with Omarchy's check icon, a second click deletes. It resets after 3 s, when the mouse leaves it, or when the popup closes. The row itself no longer turns red and the other buttons stay where they are. Keyboard Del: unpinned at once, pinned arms first (as before).
+- Undo delete: Ctrl+Z in the popup brings back the last deleted items (up to 10 per session), at their place and with their pin. Images of deleted items are kept on disk while they can still come back. Only inside the popup (no global Super+Z).
+- General: "Left click action" (was "Click action"); a line under Incognito says it also toggles with a right-click on the bar icon.
+- History: "Automatically delete items after" as a section header above the day pills (the "pinned items kept" value is gone), a separator before Clear history, spacing like the stock display panel (header 10 px above its pills, sections 14 px apart). The default stays 5 days (it already was; saved values are kept).
+- Text recognition: all installed languages are used now (before, at most 3: a 4th installed one silently did nothing, so Settings said 4 installed, 3 used). Each installed language is a row with size on disk, an "in use" switch (state.json `ocrOff`, read by `scan.sh` too) and Remove (terminal, `sudo pacman -R`, waits for Enter). Packs something else needs (eng: omasnap) and the last language are kept and say why. "Add language" pills only list languages that are not installed, with their download size. `scan.sh --sizes` adds `requiredBy` and the installed size from `pacman -Qi`.
+- Settings > Uninstall: "Uninstall plugin" and "Uninstall plugin and languages", both confirmed with a second click (red, check icon), then `uninstall.sh` in the terminal shows every command and waits for Enter. Languages: only packs `ocr-install.sh` installed (recorded in `ocr-installed` since 1.31.0), still installed, not needed by anything else, never the last one.
+- Settings page descriptions use the vanilla shell's header description size (`Style.font.bodySmall`, was `caption`), colour unchanged (foreground darkened 1.4).
+- `urgent` is now a normal property (the harness sets it like the other colours).
+- Tests: `run-v131.sh`, `uninstall.test.sh`; `ocr-install.test.sh` (remove, record, protection; fake pacman and data dir), `ocr-sizes.test.sh` (`-Qi`), `scan.test.sh` (no cap, `ocrOff`), `history.test.js`.
+
 ## 1.30.0
 
 - Text recognition: each OCR language shows its real size, read from the local pacman database (`scan.sh --sizes`, `pacman -Si`, when the settings window opens): space on disk when installed, download size otherwise (e.g. "German · 15 MB"; both in the tooltip). No size is shown when pacman has none. The sidebar entry is "Text recognition (OCR)", its page "Languages for text recognition (OCR)".

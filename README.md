@@ -112,11 +112,18 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
   **Copy text**; a QR link or e-mail gets the open button, a Wi-Fi QR code
   copies the password, any other QR code copies its text. Without the tools
   the buttons simply don't appear: `sudo pacman -S tesseract tesseract-data-eng tesseract-data-deu zbar`.
-- OCR languages (Settings > Text recognition (OCR), sorted by name): a click on one
-  installs it. Each language shows its real size from the local pacman
-  database (`pacman -Si`, read when the settings window opens): the space on
-  disk when installed, the download size otherwise; nothing is shown when
-  pacman has no data. Omarchy's floating terminal opens with the plugin's
+- OCR languages (Settings > Text recognition (OCR)): every installed
+  language is a row with its size on disk, an **in use** switch and
+  **Remove**. Images are read in every language that is in use (all
+  installed ones by default; at least one stays on; `OMARCHY_OCR_LANGS`, if
+  set, decides instead, like Omarchy's own text capture). Remove opens the
+  terminal with `sudo pacman -R tesseract-data-<code>` and waits for Enter;
+  a pack something else needs is kept and says why (English: "Needed by
+  omasnap", Omarchy's screenshot tool), and so is the last language
+  (tesseract needs one). Below, **Add language** lists the other common
+  languages with their download size; a click installs one. Sizes come
+  from the local pacman database (`pacman -Si` / `-Qi`, read when the
+  settings window opens); nothing is shown when pacman has no data. Omarchy's floating terminal opens with the plugin's
   `ocr-install.sh`, which first shows what it will run, e.g. "Nice Clipboard
   will install German text recognition: `sudo pacman -S --needed
   tesseract-data-deu`", and waits: Enter continues (then sudo asks for your
@@ -251,11 +258,12 @@ In the popup:
 | Alt+Shift+1…9, 0 | paste slot N, the same item as from anywhere (also while searching); the 10 slotted rows show their key |
 | → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
 | Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
-| Delete (or the trash icon) | delete the item (with search text selected: delete that text). A pinned item turns red first: press Del again within 3 s to delete it; any other key cancels |
+| Delete (or the trash icon) | delete the item (with search text selected: delete that text). The trash icon asks first: one click turns it red with a check, a second click deletes (it resets after 3 s, when the mouse leaves it or the popup closes). Del on the keyboard deletes an unpinned item at once and arms a pinned one the same way |
+| Ctrl+Z | bring back the last deleted item (up to 10, in this session), at its place and with its pin; with nothing to bring back it edits the search |
 | Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in Settings > Flux: send the current clipboard |
 | Shift+Delete | clear history (asks first; only unpinned items are counted and deleted, pinned items stay) |
 | Ctrl+I (or the Incognito switch in the footer, or right-click the bar icon) | incognito on/off |
-| Backspace, Ctrl+Backspace, ← →, Ctrl+Z | edit the search |
+| Backspace, Ctrl+Backspace, ← → | edit the search |
 | Ctrl+U | clear the search |
 | Shift+← → / Shift+Home End, Ctrl+A, mouse drag | select search text |
 | Ctrl+C / Ctrl+X (with search text selected) | copy / cut it to the clipboard (becomes a new history item) |
@@ -312,6 +320,14 @@ is private, offline or has no release, nothing is shown. Saved in
 `state.json` (`updateCheck`, last check time, newest version seen).
 
 ## Uninstall
+
+Settings > Uninstall has two buttons (each asks with a second click, then
+opens a terminal that shows every command and waits for Enter):
+**Uninstall plugin** (its runtime keys, history, settings and the plugin;
+Flux is resumed if incognito paused it) and **Uninstall plugin and
+languages** (also the OCR packs Nice Clipboard installed itself, recorded in
+`~/.local/share/timon.clipboard/ocr-installed`; packs that were there before
+or that something else needs stay). By hand:
 
 ```bash
 ~/.config/omarchy/plugins/timon.clipboard/flux-pause.sh resume   # start Flux again if incognito had paused it

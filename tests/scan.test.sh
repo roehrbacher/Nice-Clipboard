@@ -32,13 +32,22 @@ want small.png 'https://example.org/small'
 for f in tight dark small; do echo "note zbar-only $f: '$(zbarimg --quiet --raw "$d/$f.png" 2>/dev/null)'"; done
 # 1.19.0: OCR languages, with a fake tesseract that has eng, deu, fra installed.
 fb="$tmp/fakebin"; mkdir -p "$fb"
-printf '#!/bin/bash\n[[ $1 == --list-langs ]] && printf "List of available languages (4):\\neng\\ndeu\\nfra\\nosd\\n"\n' >"$fb/tesseract"; chmod +x "$fb/tesseract"
-l() { PATH="$fb:$PATH" "$here/../scan.sh" --langs | jq -r "$1"; }
-[[ $(l .used) == "eng+deu+fra" ]] && ok "langs: all installed (eng first)" || bad "langs all: $(l .used)"
-[[ $(l '.installed|join(",")') == "deu,eng,fra" ]] && ok "langs: osd not listed" || bad "installed: $(l '.installed|join(",")')"
+printf '#!/bin/bash\n[[ $1 == --list-langs ]] && printf "List of available languages (5):\\neng\\ndeu\\nfra\\nita\\nosd\\n"\n' >"$fb/tesseract"; chmod +x "$fb/tesseract"
+# Own data dir: the settings' "ocrOff" list lives in state.json there.
+fd="$tmp/langdata"; mkdir -p "$fd/timon.clipboard"
+l() { PATH="$fb:$PATH" XDG_DATA_HOME="$fd" "$here/../scan.sh" --langs | jq -r "$1"; }
+[[ $(l .used) == "eng+deu+fra+ita" ]] && ok "langs: all 4 installed used (eng first; no 3 cap since 1.31)" || bad "langs all: $(l .used)"
+[[ $(l '.installed|join(",")') == "deu,eng,fra,ita" ]] && ok "langs: osd not listed" || bad "installed: $(l '.installed|join(",")')"
+echo '{"ocrOff":["deu","ita"]}' > "$fd/timon.clipboard/state.json"
+[[ $(l .used) == "eng+fra" ]] && ok "langs: switched off in settings are not used" || bad "langs off: $(l .used)"
+echo '{"ocrOff":["eng","deu","fra","ita"]}' > "$fd/timon.clipboard/state.json"
+[[ $(l .used) == "eng+deu+fra+ita" ]] && ok "langs: all switched off -> all used" || bad "langs all off: $(l .used)"
+echo '{"ocrOff":["deu"]}' > "$fd/timon.clipboard/state.json"
+[[ $(OMARCHY_OCR_LANGS=deu l .used) == deu ]] && ok "langs: OMARCHY_OCR_LANGS beats the settings" || bad "env over state"
+rm -f "$fd/timon.clipboard/state.json"
 [[ $(OMARCHY_OCR_LANGS=deu l .used) == deu ]] && ok "langs: OMARCHY_OCR_LANGS=deu" || bad "env deu"
 [[ $(OMARCHY_OCR_LANGS=deu+spa l .used) == deu ]] && ok "langs: not-installed spa skipped, nothing downloaded" || bad "env deu+spa"
-[[ $(OMARCHY_OCR_LANGS=spa l .used) == "eng+deu+fra" ]] && ok "langs: nothing usable in env -> installed ones" || bad "env spa"
+[[ $(OMARCHY_OCR_LANGS=spa l .used) == "eng+deu+fra+ita" ]] && ok "langs: nothing usable in env -> installed ones" || bad "env spa"
 # 1.20.0: an app screenshot with a QR code, icons next to the labels and an
 # icon row under the code (what gave "£ Dynamic QR Code", '[=] "h'!'' etc.):
 # only the labels come out. Plus a light and a dark theme, one without a QR
