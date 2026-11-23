@@ -803,3 +803,37 @@ console.log("filters/ocr: ok")}
   assert.strictEqual(H.feedbackLeftAfterSend("", "hello"), "", "cleared meanwhile: stays empty")
   console.log("1.33.1: ok")
 }
+
+{
+  // 1.33.4: unpin = top of History with a fresh time; Ctrl+Z for pin/unpin.
+  const h0 = [
+    { type: "text", text: "a", at: 50 },
+    { type: "text", text: "p1", pinned: true, at: 40 },
+    { type: "text", text: "b", at: 30 },
+    { type: "text", text: "p2", pinned: true, at: 1 }
+  ]
+  const u = H.unpinToTop(h0, 3, 9000)
+  assert.deepStrictEqual(u.map(e => e.text + (e.pinned ? "*" : "")), ["p2", "a", "p1*", "b"], "unpinned p2 is the first unpinned entry")
+  assert.strictEqual(u[0].at, 9000, "fresh copy time")
+  assert.deepStrictEqual(H.displayRows(u, "", 50).map(r => r.fullText), ["p1", "p2", "a", "b"], "shown first under Pinned")
+  assert.strictEqual(H.slotHistoryIndex(u, 2), 0, "Alt+Shift+2 = the unpinned item, as shown")
+  // Undo unpin: back to its place, pinned, with its old time.
+  let st = H.pushUndo([], h0[3], 3, "pin")
+  assert.strictEqual(st[0].kind, "pin", "pin undo is marked")
+  let r = H.restoreEntry(u, st[0])
+  assert.deepStrictEqual(r.history, h0, "undo unpin restores order, pin and time")
+  // Undo pin keeps what the entry learned since (HTML of a later copy), only the pin goes.
+  const pinned = H.togglePinAt(h0, 0)
+  pinned[0] = Object.assign({}, pinned[0], { html: "<b>a</b>" })
+  r = H.restoreEntry(pinned, { entry: h0[0], index: 0, kind: "pin" })
+  assert.strictEqual(r.history[0].pinned, undefined, "undo pin unpins")
+  assert.strictEqual(r.history[0].html, "<b>a</b>", "undo pin keeps newer data (HTML from a later copy)")
+  // A pin change of an item that is gone since brings nothing back.
+  r = H.restoreEntry([{ type: "text", text: "x" }], { entry: h0[3], index: 0, kind: "pin" })
+  assert.strictEqual(r.index, -1, "gone item: nothing restored")
+  assert.deepStrictEqual(r.history.map(e => e.text), ["x"], "gone item: history unchanged")
+  // A deleted item still comes back (delete undo has no kind).
+  r = H.restoreEntry([{ type: "text", text: "x" }], H.pushUndo([], h0[2], 0)[0])
+  assert.deepStrictEqual(r.history.map(e => e.text), ["b", "x"], "delete undo unchanged")
+  console.log("1.33.4: ok")
+}

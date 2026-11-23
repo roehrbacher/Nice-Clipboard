@@ -384,7 +384,7 @@ Item {
   // The public project page (settings sidebar, Feedback description).
   readonly property string repoUrl: "https://github.com/roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.33.3"
+  readonly property string pluginVersion: "1.33.4"
   property string feedbackNote: ""
   // True after the Worker confirmed; the note then gets Omarchy's check
   // (nf-md-check, the shell's own Nerd Font icon) in the theme accent.
@@ -720,7 +720,7 @@ Item {
   function saveHistory() {
     historyFile.setText(JSON.stringify(root.history) + "\n")
     // Image files of deleted items stay while Ctrl+Z can bring them back.
-    if (!root.undoStack.some(function(u) { return u.entry && u.entry.type === "image" })) pruneTimer.restart()
+    if (!root.undoStack.some(function(u) { return u.entry && u.entry.type === "image" && u.kind !== "pin" })) pruneTimer.restart()
   }
 
   // Phone items sent during incognito. Incognito stops fluxd; the
@@ -852,7 +852,13 @@ Item {
   }
 
   function clearUnpinned() {
-    var currentWasUnpinned = root.history.length > 0 && !root.history[0].pinned
+    // Empty the system clipboard only when it holds one of the items being
+    // cleared. The top History row is not always what is copied (an
+    // unpinned item goes on top without being copied).
+    // Unknown key (not read yet): the old rule, the top entry.
+    var currentWasUnpinned = root.currentClipKey !== ""
+      ? root.history.some(function(e) { return e && !e.pinned && ClipboardHistory.clipKeyOf(e, Qt.md5) === root.currentClipKey })
+      : root.history.length > 0 && !root.history[0].pinned
     root.history = ClipboardHistory.clearHistory(root.history)
     root.saveHistory()
     if (currentWasUnpinned && !root.privateMode) Quickshell.execDetached([root.helper, "clear"])
@@ -878,14 +884,18 @@ Item {
     root.clearUnpinned()
   }
 
-  // Ctrl+Z in the popup restores the last deleted items (up to 10,
-  // this session only), at their place and with their pin.
+  // Ctrl+Z in the popup takes back the last deletes, pins and unpins
+  // (up to 10, this session only): the item goes back to its place, with
+  // its pin, as it was before.
   property var undoStack: []
-  function undoDelete() {
-    if (!root.undoStack.length) return false
-    var item = root.undoStack[root.undoStack.length - 1]
-    root.undoStack = root.undoStack.slice(0, -1)
-    var r = ClipboardHistory.restoreEntry(root.history, item)
+  function undoLast() {
+    var r = { index: -1 }
+    while (r.index < 0) {
+      if (!root.undoStack.length) return false
+      var item = root.undoStack[root.undoStack.length - 1]
+      root.undoStack = root.undoStack.slice(0, -1)
+      r = ClipboardHistory.restoreEntry(root.history, item)
+    }
     root.history = r.history
     root.saveHistory()
     root.rebuildDisplay(true)
@@ -919,7 +929,11 @@ Item {
     // on the row that followed it (or preceded it, at the end).
     var neighbour = index + 1 < displayModel.count ? index + 1 : index - 1
     var neighbourKey = neighbour >= 0 ? root.rowKey(displayModel.get(neighbour)) : ""
-    root.history = ClipboardHistory.togglePinAt(root.history, historyIndex)
+    root.undoStack = ClipboardHistory.pushUndo(root.undoStack, root.history[historyIndex], historyIndex, "pin")
+    // Unpinning is touching it: it becomes the newest History item (fresh
+    // time, top of History), the system clipboard stays as it is.
+    root.history = row.pinned ? ClipboardHistory.unpinToTop(root.history, historyIndex, Date.now())
+                              : ClipboardHistory.togglePinAt(root.history, historyIndex)
     root.saveHistory()
     root.rebuildDisplay(true, historyIndex)
     for (var i = 0; neighbourKey !== "" && i < displayModel.count; i++) {
@@ -999,6 +1013,8 @@ Item {
     }
     var next = root.history
     // Pinned or unpinned by the drag: flip it first, then apply the order.
+    // Ctrl+Z takes the pin change back like the pin button's.
+    if (nowPinned !== root.dragOrigPinned) root.undoStack = ClipboardHistory.pushUndo(root.undoStack, root.history[historyIndex], historyIndex, "pin")
     var unpinned = root.dragOrigPinned && !nowPinned
     if (nowPinned && !root.dragOrigPinned) next = ClipboardHistory.togglePinAt(next, historyIndex)
     next = ClipboardHistory.reorderPinned(next, order)
@@ -1364,8 +1380,8 @@ Item {
     var alt = (event.modifiers & Qt.AltModifier) !== 0
     var shift = (event.modifiers & Qt.ShiftModifier) !== 0
 
-    // Ctrl+Z undoes the last delete (else it edits the search text).
-    if (event.key === Qt.Key_Z && ctrl && !alt && !shift && root.undoDelete()) { event.accepted = true; return }
+    // Ctrl+Z undoes the last delete, pin or unpin (else it edits the search text).
+    if (event.key === Qt.Key_Z && ctrl && !alt && !shift && root.undoLast()) { event.accepted = true; return }
 
     // Left/Right walk the selected row's actions, Enter presses the focused one.
     if (root.cursorActive && displayModel.count > 0) {
@@ -2831,8 +2847,17 @@ Item {
 
               // "Top" button (like Telegram): shows once scrolled down a bit,
               // stock control fill/border, scrolls smoothly back to the top.
+              // It floats over the list, unlike a stock button on the flat
+              // panel: Qt draws the rounded 1 px border with soft edges and
+              // nothing under it, so rows scrolled behind showed through the
+              // border, most on the right, where the text-measured width
+              // (e.g. 63.31 px) left the edge between two pixels. Whole-pixel
+              // size, and an opaque panel-coloured bed 1 px wider all round
+              // under the button (z -1 draws below the parent), keep the list
+              // out of the border.
               BorderSurface {
                 id: topButton
+                objectName: "topButton"
                 z: 3
                 readonly property bool hot: topMouse.containsMouse
                 visible: opacity > 0
@@ -2841,11 +2866,20 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Style.space(8)
-                width: topLabel.implicitWidth + Style.spacing.controlPaddingX * 2
-                height: topLabel.implicitHeight + Style.spacing.controlPaddingY * 2
+                width: Math.ceil(topLabel.implicitWidth + Style.spacing.controlPaddingX * 2)
+                height: Math.ceil(topLabel.implicitHeight + Style.spacing.controlPaddingY * 2)
                 radius: Style.cornerRadius
                 color: Qt.tint(Color.popups.background, Style.controlFill(false, hot, root.foreground, root.accent))
                 borderSpec: Border.controlSpec(hot ? "hover" : "normal", root.foreground, root.accent)
+
+                Rectangle {
+                  objectName: "topButtonBed"
+                  z: -1
+                  anchors.fill: parent
+                  anchors.margins: -1
+                  radius: parent.radius > 0 ? parent.radius + 1 : 0
+                  color: Color.popups.background
+                }
 
                 Text {
                   id: topLabel

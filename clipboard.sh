@@ -59,6 +59,12 @@ copy_entry() {
 # Hyprland focuses after the popup closes: after a mouse click the popup's
 # fading full-screen surface is still under the pointer and the keyboard
 # often ends up on nothing. Without a usable address: the focused window.
+# Speed (1.33.4): with an address nothing waits. The old 0.15 s pause was
+# for the popup to let go of the keyboard (stock omarchy-clipboard-paste-text),
+# but keys sent to a window address reach that window whoever has the
+# keyboard, and wl-copy only returns once the new selection is set. A
+# focus that is needed goes out in one hyprctl --batch with the key-down
+# (Hyprland runs a dispatch before it answers, so no pause between them).
 # CLIPBOARD_PASTE_DRY=1 prints the dispatches instead (tests).
 send_paste() {
   local t=${1:-} win="" cur
@@ -73,26 +79,33 @@ send_paste() {
     printf "dispatch $d\n" down "$w" up "$w"
     return 0
   fi
+  # No address: the keys go to whatever has the keyboard, so give the
+  # popup its moment to let go (as stock does).
+  [[ -z $win ]] && sleep 0.15
   command -v hyprctl >/dev/null || { wtype -M shift -k Insert -m shift 2>/dev/null || true; return 0; }
+  local down="" out focus=0
   if [[ -n $win ]]; then
     cur=$(timeout 3 hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty' 2>/dev/null)
-    if [[ ${cur,,} != "$win" && ${cur,,} != "${win#address:}" ]]; then
-      if [[ $(timeout 3 hyprctl dispatch "hl.dsp.focus({ window = \"$win\" })" 2>/dev/null) == ok ]]; then
-        sleep 0.05
-      else
-        w="" # window gone: paste into whatever is focused
-      fi
-    fi
+    [[ ${cur,,} != "$win" && ${cur,,} != "${win#address:}" ]] && focus=1
   fi
-  local down
-  # shellcheck disable=SC2059
-  down=$(timeout 3 hyprctl dispatch "$(printf "$d" down "$w")" 2>/dev/null)
+  if ((focus)); then
+    # Focus and key-down to that window in one round trip. The key-down's
+    # reply is the last line; a window that is gone fails both.
+    # shellcheck disable=SC2059
+    out=$(timeout 3 hyprctl --batch "dispatch hl.dsp.focus({ window = \"$win\" }) ; dispatch $(printf "$d" down "$w")" 2>/dev/null)
+    down=$(grep -v '^[[:space:]]*$' <<<"$out" | tail -n 1)
+  else
+    # shellcheck disable=SC2059
+    down=$(timeout 3 hyprctl dispatch "$(printf "$d" down "$w")" 2>/dev/null)
+  fi
   if [[ $down != ok && -n $w ]]; then
-    w=""
+    w="" # window gone: paste into whatever is focused
     # shellcheck disable=SC2059
     down=$(timeout 3 hyprctl dispatch "$(printf "$d" down "")" 2>/dev/null)
   fi
   if [[ $down == ok ]]; then
+    # Key-up 50 ms later, like the stock universal paste (the app pasted
+    # on key-down already; this only avoids a stuck synthetic key).
     sleep 0.05
     # shellcheck disable=SC2059
     timeout 3 hyprctl dispatch "$(printf "$d" up "$w")" >/dev/null 2>&1 || timeout 3 hyprctl dispatch "$(printf "$d" up "$w")" >/dev/null 2>&1
@@ -120,7 +133,6 @@ paste | copy)
   valid_index "${2:-}" || exit 1
   copy_entry "$2" || exit 1
   [[ $1 == copy ]] && exit 0
-  sleep 0.15
   send_paste "${3:-}"
   ;;
 current)
@@ -158,7 +170,6 @@ markdown | paste-md)
   # a history entry. Afterwards the entry itself goes back on the clipboard.
   printf '%s' "$md" | sha256sum | awk '{print $1}' >"$DATA_DIR/skip-next"
   printf '%s' "$md" | wl-copy || exit 1
-  sleep 0.15
   send_paste "${3:-}"
   # The target app reads the paste on its own time; give it a second, then
   # restore only if the clipboard still holds our Markdown.

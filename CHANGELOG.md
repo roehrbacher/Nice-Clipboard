@@ -2,6 +2,14 @@
 
 Newest first. Older history is in the git log.
 
+## 1.33.4
+
+- Faster left-click paste. The paste waited a fixed 0.15 s before sending Shift+Insert (from the stock paste script, which types into whatever has the keyboard and so waits for the popup to let go). Keys sent to the remembered window address reach that window whoever has the keyboard, and `wl-copy` only returns once the new clipboard is set, so that wait is gone when there is an address. A needed focus and the key-down now go out in one `hyprctl --batch` call, without the extra 50 ms pause between them. Measured on the XPS (real Hyprland, keys and clipboard stubbed): key-down 205 ms after the click before, 50 ms now (271 to 53 ms when the window needs focus first). Without an address the 0.15 s wait stays.
+- Ctrl+Z takes back a pin or unpin (button, key or drag), on the same undo stack as delete. It keeps what the item learned since and never brings back an item that was cleared or auto-deleted meanwhile.
+- Unpinning puts the item on top of History with a fresh time (its auto-delete countdown starts over), because it is what you just touched. The system clipboard is not touched; the "on the clipboard" mark stays on what is really copied.
+- Clear history empties the system clipboard only when what is copied is one of the cleared items (it used to look at the top History row, which after an unpin is not always what is copied).
+- Fix: list text showed through the border of the floating "Top" button, mostly on its right side. Qt draws the rounded 1 px border with soft edges and nothing under it, which is invisible on the flat panel but not over the list, and the button's width came from text metrics (63.31 px), so its right edge sat between two pixels. The button now has a whole-pixel size and an opaque panel-coloured bed 1 px wider all round.
+
 ## 1.33.3
 
 - Fix: with "Select, paste & close" (the default), a left click closed the popup but often pasted nothing. The paste is a Shift+Insert sent to whatever window has the keyboard a moment after the popup closes, and after a mouse click Hyprland often gave the keyboard to nothing: the popup's fading full-screen surface was still under the pointer. The popup now remembers the window that had the keyboard when it opened, and `clipboard.sh paste <index> <window>` focuses that window again (only if needed) and sends the keys to it. Enter, Alt+Shift+N in the popup and the Markdown paste use the same path. If that window was closed meanwhile, or there is none, the paste goes to the focused window as before.

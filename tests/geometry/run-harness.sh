@@ -13,6 +13,9 @@
 #             from another app ends an armed delete
 #   v1332.qml 1.33.2: empty-state and search-field dimming next to the
 #             stock launcher; OCR no longer polls --langs while a job runs
+#   v1334.qml 1.33.4: unpin goes on top of History (clipboard untouched),
+#             Ctrl+Z for pin/unpin, Clear only empties a cleared clipboard,
+#             Top button PNGs (tests/topbutton.test.sh)
 #   v1333.qml 1.33.3: "Select, paste & close" closes and pastes into the
 #             window that had the keyboard when the popup opened
 #   v1322.qml 1.32.2: every popup close ends the clear question / armed
@@ -24,9 +27,9 @@
 # notifiers, xdg-open and the terminal launcher are stubs that only log;
 # feedback goes to a local fake Worker; temp data dir, no watchers, hard
 # timeout. Nothing is installed, removed, sent or pasted.
-#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332 [png dir]
+#   bash tests/geometry/run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334 [png dir]
 set -u
-name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333 [png dir]}; shift
+name=${1:?usage: run-harness.sh v129|v130|v131|v132|v1322|v133|v1331|v1332|v1333|v1334 [png dir]}; shift
 tag=${name^^}
 ulimit -c 0
 here=$(cd "$(dirname "$0")" && pwd); src="$here/../.."
@@ -86,7 +89,7 @@ cp "$here/$name.qml" "$tmp/shell.qml"
 theme="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml"
 tc() { sed -n "s/^$1 *= *\"\(#[0-9A-Fa-f]*\)\".*/\1/p" "$theme" 2>/dev/null | head -1; }
 export HARNESS_BG=$(tc background) HARNESS_FG=$(tc foreground) HARNESS_ACCENT=$(tc accent) HARNESS_URGENT=$(tc red)
-HARNESS_PNG_DIR="$tmp/png" PATH="$tmp/bin:$PATH" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/data" QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software setsid timeout -s KILL 55 quickshell -p "$tmp/shell.qml" > "$tmp/out" 2>&1
+HARNESS_PNG_DIR="$tmp/png" PATH="$tmp/bin:$PATH" XDG_DATA_HOME="$tmp/data" XDG_STATE_HOME="$tmp/data" QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=${HARNESS_QUICK_BACKEND:-software} setsid timeout -s KILL 55 quickshell -p "$tmp/shell.qml" > "$tmp/out" 2>&1
 sleep 1
 grep -E "$tag|"'ERROR|rror:|TypeError|ReferenceError|Unable' "$tmp/out" | grep -v 'qt.qpa'
 echo "$tag helper calls: $(grep -v '^current' "$tmp/helper" 2>/dev/null | tr "\n" ";")"

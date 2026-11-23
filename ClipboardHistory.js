@@ -174,27 +174,46 @@ function removeEntryAt(history, index) {
   return next
 }
 
-// Undo delete (Ctrl+Z in the popup). The popup keeps the last few
-// deleted entries with their history index; restoring puts the entry back
-// where it was (pinned state included). If the same item was copied again
-// meanwhile, that copy is dropped so it is not listed twice.
+// Undo (Ctrl+Z in the popup) for delete, pin and unpin. The popup keeps
+// the last few changed entries as they were before, with their history
+// index; restoring puts that entry back where it was (pinned state
+// included). If the same item was copied again meanwhile, that copy is
+// dropped so it is not listed twice. A pin/unpin undo ("pin") keeps what
+// the entry learned since (text read from an image, HTML) and only takes
+// back the pin, the copy time and the place; if the item is gone by now,
+// it brings nothing back (index -1).
 var UNDO_MAX = 10
-function pushUndo(stack, entry, index) {
+function pushUndo(stack, entry, index, kind) {
   var s = Array.isArray(stack) ? stack.slice() : []
   if (!entry) return s
-  s.push({ entry: entry, index: Math.max(0, Number(index) || 0) })
+  var item = { entry: entry, index: Math.max(0, Number(index) || 0) }
+  if (kind === "pin") item.kind = "pin"
+  s.push(item)
   return s.slice(-UNDO_MAX)
 }
 function restoreEntry(history, item) {
   var values = Array.isArray(history) ? history.slice() : []
   if (!item || !item.entry) return { history: values, index: -1 }
   var key = entryKey(normalizeEntry(item.entry) || {})
+  var entry = item.entry
   for (var i = values.length - 1; i >= 0; i--) {
     var e = normalizeEntry(values[i])
-    if (e && entryKey(e) === key) values.splice(i, 1)
+    if (!e || entryKey(e) !== key) continue
+    if (item.kind === "pin") {
+      entry = Object.assign({}, e)
+      if (item.entry.pinned === true) entry.pinned = true
+      else delete entry.pinned
+      if (item.entry.at !== undefined) entry.at = item.entry.at
+      if (item.entry.legacy) entry.legacy = true
+      else delete entry.legacy
+    }
+    values.splice(i, 1)
   }
+  // A pin change of an item that is gone since (cleared, auto-deleted)
+  // brings nothing back.
+  if (item.kind === "pin" && entry === item.entry) return { history: Array.isArray(history) ? history.slice() : [], index: -1 }
   var at = Math.min(Math.max(0, Number(item.index) || 0), values.length)
-  values.splice(at, 0, item.entry)
+  values.splice(at, 0, entry)
   return { history: values, index: at }
 }
 
@@ -563,7 +582,11 @@ function clipKeyOf(entry, md5) {
   return entry.type === "text" && entry.text ? "text:" + md5(String(entry.text)) : ""
 }
 
-// ---- unpin by drag: goes to the top of History, as if just copied.
+// ---- unpin (button, key or drag): the entry goes to the top of History
+// with a fresh time, because it is what the user just touched. Only the
+// history order changes; the system clipboard keeps what it has (the
+// "on the clipboard" mark follows the clipboard, not the top row). The
+// fresh time also restarts its auto-delete countdown.
 function unpinToTop(history, index, now) {
   var values = Array.isArray(history) ? history.slice() : []
   var e = normalizeEntry(values[index])

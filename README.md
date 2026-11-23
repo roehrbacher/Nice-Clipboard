@@ -35,7 +35,9 @@ imported once on first start. To hear about upstream changes, run
 
 ## Behaviour
 
-- **History:** newest first, a re-copied item moves to the top. Unpinned items
+- **History:** newest first, a re-copied item moves to the top. An item you
+  unpin goes to the top of History too (the clipboard keeps what it has),
+  and its days start over. Unpinned items
   are deleted 1, 2, 5 (default), 10 or 20 days after they were copied (pick it
   in settings); pinned items are never deleted. Day headings: History (today),
   Yesterday, then the date. Text and images (PNG, JPEG, WebP, GIF,
@@ -269,7 +271,7 @@ In the popup:
 | → / ← (search cursor at the end) | move between the selected row's actions (phone, trash, pin); Enter presses the focused one; Esc, ↑ or ↓ go back to the row |
 | Ctrl+P (or the pin icon) | pin / unpin (Ctrl+F works too) |
 | Delete (or the trash icon) | delete the item (with search text selected: delete that text). The trash icon asks first: one click turns it red with a check, a second click deletes (it resets after 3 s, when the mouse leaves it or the popup closes). Del on the keyboard deletes an unpinned item at once and arms a pinned one the same way |
-| Ctrl+Z | bring back the last deleted item (up to 10, in this session), at its place and with its pin; with nothing to bring back it edits the search |
+| Ctrl+Z | take back the last delete, pin or unpin (up to 10, in this session): the item goes back to its place, with its pin; with nothing to take back it edits the search |
 | Ctrl+S (or the phone icon) | send a text item to the phone (Flux, when a phone is connected); in Settings > Phone (Flux): send the current clipboard |
 | Shift+Delete | clear history (asks first; only unpinned items are counted and deleted, pinned items stay) |
 | Ctrl+I (or the Incognito switch in the footer, or right-click the bar icon) | incognito on/off |
@@ -364,7 +366,7 @@ bash tests/ocr-hints.test.sh    # OCR language hints from locale / LANGUAGE / lo
 bash tests/ocr-install.test.sh  # OCR install script: shows the command, waits for Enter, rejects odd codes, reports how it ended (dry run, no sudo)
 bash tests/global-keys.test.sh  # plugin-added global keys: only free keys bound, taken ones reported, remove drops only ours (stub hyprctl)
 bash tests/send.test.sh         # Send via Flux: fluxd socket only, no wl-copy, history untouched (fake fluxd)
-bash tests/paste-target.test.sh # popup paste goes back to the window from before the popup (stub hyprctl / wl-copy, no keys sent)
+bash tests/paste-target.test.sh # popup paste goes back to the window from before the popup, without a fixed wait (stub hyprctl / wl-copy, no keys sent)
 bash tests/slots.test.sh        # Alt+Shift slots: copy-slot / paste-slot.sh (and old paste-pinned.sh) = the popup's mapping
 bash tests/uninstall.test.sh    # uninstall.sh: shows every step, waits for Enter, only removes recorded, unneeded languages (fake HOME, stubs)
 bash tests/geometry/run-harness.sh v129 # offscreen: slot hints and keys, demo banner, settings window reopen after Super+W, feedback sent state
@@ -376,6 +378,8 @@ bash tests/geometry/run-harness.sh v133 # offscreen: no edit button, left-click 
 bash tests/geometry/run-harness.sh v1331 # offscreen: typing during a feedback send is kept; a copy from another app ends an armed delete
 bash tests/geometry/run-harness.sh v1332 # offscreen: empty-state and search-field dimming next to the stock launcher; OCR no longer polls --langs while a job runs
 bash tests/geometry/run-harness.sh v1333 # offscreen: "Select, paste & close" closes and hands the paste to clipboard.sh with the window from before the popup
+bash tests/geometry/run-harness.sh v1334 # offscreen: unpin goes on top of History (clipboard untouched), Ctrl+Z for pin / unpin, Clear only empties a cleared clipboard
+bash tests/topbutton.test.sh    # offscreen (Qt OpenGL on Mesa software, scale 1 and 1.6): list text never shows through the floating Top button
 ```
 
 All tests run offscreen with stubs; none of them touch your real clipboard,
