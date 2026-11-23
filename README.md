@@ -4,7 +4,7 @@
 
 A clipboard history for [Omarchy](https://omarchy.org) that looks like it ships with it.
 
-<!-- Screenshot: add preview.png to the repo, then replace this comment with: ![Nice Clipboard](preview.png) -->
+![Nice Clipboard](preview.png)
 
 ```bash
 omarchy plugin add https://github.com/roehrbacher/Nice-Clipboard --enable
