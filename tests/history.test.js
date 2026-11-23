@@ -610,3 +610,48 @@ assert.strictEqual(H.ocrInstallCommand(["eng", "deu"]), "sudo pacman -S tesserac
   assert.strictEqual(H.phoneGlyph("nophone").codePointAt(0), 0xF0950, "not connected: cellphone-off")
   console.log("ok 1.26.0 Alt+N history slots, clear count, phone glyph")
 }
+
+{
+  // 1.27.0: OCR language suggestions from locale / keyboard layout / dictionaries
+  const L = H.ocrHintLanguage
+  assert.deepStrictEqual(L("de_AT.UTF-8"), { code: "deu", source: "locale" })
+  assert.deepStrictEqual(L("de"), { code: "deu", source: "locale" }, "LANGUAGE entries have no country")
+  assert.deepStrictEqual(L("sr_RS@latin"), null, "unknown language: no suggestion")
+  assert.deepStrictEqual(L("C.UTF-8"), null)
+  assert.deepStrictEqual(L("POSIX"), null)
+  assert.deepStrictEqual(L("kb:at"), { code: "deu", source: "kb" }, "Austrian layout = German")
+  assert.deepStrictEqual(L("kb:ch"), { code: "deu", source: "kb" })
+  assert.deepStrictEqual(L("kb:br"), { code: "por", source: "kb" })
+  assert.deepStrictEqual(L("kb:us"), { code: "eng", source: "kb" })
+  assert.deepStrictEqual(L("kb:de(nodeadkeys)"), { code: "deu", source: "kb" }, "variant in parentheses")
+  assert.deepStrictEqual(L("dict:fr_FR"), { code: "fra", source: "dict" })
+  assert.deepStrictEqual(L("zh_CN.UTF-8"), { code: "chi_sim", source: "locale" })
+  assert.deepStrictEqual(L("cs_CZ.UTF-8"), { code: "ces", source: "locale" })
+  assert.deepStrictEqual(L(""), null)
+  const hints = ["en_US.UTF-8", "de_AT.UTF-8", "kb:us", "kb:at", "dict:de_AT", "dict:fr_FR"]
+  const s = H.ocrSuggestions(hints, ["eng"], [])
+  assert.deepStrictEqual(s.map(x => x.code), ["deu", "fra"], "English never, German once, in hint order")
+  assert.strictEqual(s[0].cmd, "sudo pacman -S tesseract-data-deu")
+  assert.strictEqual(s[0].text, "Looks like you also use German (your language settings). Install OCR for it?")
+  assert.strictEqual(s[1].source, "a spell-check dictionary")
+  assert.deepStrictEqual(H.ocrSuggestions(["kb:at"], ["eng"], []).map(x => x.source), ["your keyboard layout"])
+  assert.deepStrictEqual(H.ocrSuggestions(hints, ["eng", "deu"], []).map(x => x.code), ["fra"], "installed packs are not suggested")
+  assert.deepStrictEqual(H.ocrSuggestions(hints, ["eng"], ["deu"]).map(x => x.code), ["fra"], "dismissed ones stay hidden")
+  assert.deepStrictEqual(H.ocrSuggestions(undefined, undefined, undefined), [], "no hints: nothing")
+  assert.deepStrictEqual(H.ocrDismissedOf(["deu", "x; rm", 3, "chi_sim"]), ["deu", "chi_sim"])
+  assert.deepStrictEqual(H.ocrDismissedOf("deu"), [])
+  console.log("ok 1.27.0 OCR language suggestions")
+}
+
+{
+  // 1.27.0: direct feedback payload and replies
+  assert.deepStrictEqual(JSON.parse(H.feedbackPayload("  hi there \n", "1.27.0")), { message: "hi there", version: "1.27.0", website: "" })
+  assert.deepStrictEqual(H.feedbackResultFromCurl('{"ok":true}\n0'), { ok: true, note: "Sent, thanks!" })
+  assert.strictEqual(H.feedbackResultFromCurl('{"ok":false,"error":"slow down"}\n0').note, "Too many: try again in a minute")
+  assert.strictEqual(H.feedbackResultFromCurl('{"ok":false,"error":"too long"}\n0').ok, false)
+  assert.strictEqual(H.feedbackResultFromCurl('\n6').note, "Not sent: offline? Text kept", "DNS failure")
+  assert.strictEqual(H.feedbackResultFromCurl('\n28').ok, false, "timeout")
+  assert.strictEqual(H.feedbackResultFromCurl('<html>502</html>\n0').ok, false, "non-JSON reply")
+  assert.strictEqual(H.feedbackResultFromCurl('').ok, false)
+  console.log("ok 1.27.0 direct feedback")
+}

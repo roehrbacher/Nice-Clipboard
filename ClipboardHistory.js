@@ -1174,6 +1174,80 @@ function kineticFlickVelocity(velocity, msSinceLastDelta) {
   return Math.abs(velocity) < 150 ? 0 : velocity
 }
 
+// ---- OCR language suggestions (1.27.0) ------------------------------------
+// scan.sh --langs reports "hints": the locale settings (LANG, LANGUAGE, LC_*,
+// locale.conf) as-is, Hyprland keyboard layouts as "kb:<layout>" and hunspell
+// dictionaries as "dict:<name>". These map them to tesseract-data-<code>.
+var OCR_FROM_LOCALE = { de: "deu", fr: "fra", es: "spa", it: "ita", pt: "por", nl: "nld",
+  pl: "pol", cs: "ces", tr: "tur", ru: "rus", uk: "ukr", zh: "chi_sim", ja: "jpn", ko: "kor", ar: "ara", en: "eng" }
+// XKB layout names are mostly country codes.
+var OCR_FROM_KB = { de: "deu", at: "deu", ch: "deu", fr: "fra", be: "fra", es: "spa", latam: "spa",
+  it: "ita", pt: "por", br: "por", nl: "nld", pl: "pol", cz: "ces", tr: "tur", ru: "rus", ua: "ukr",
+  cn: "chi_sim", jp: "jpn", kr: "kor", ara: "ara", eg: "ara", us: "eng", gb: "eng" }
+var OCR_HINT_SOURCES = { locale: "your language settings", kb: "your keyboard layout", dict: "a spell-check dictionary" }
+// One hint -> { code, source } or null.
+function ocrHintLanguage(hint) {
+  var h = String(hint || "").trim()
+  if (h === "") return null
+  var m = /^(kb|dict):(.*)$/.exec(h)
+  var kind = m ? m[1] : "locale"
+  var v = (m ? m[2] : h).toLowerCase()
+  if (kind === "kb") {
+    var code = OCR_FROM_KB[v.split("(")[0].trim()]
+    return code ? { code: code, source: kind } : null
+  }
+  var lang = v.split(/[_.@\-]/)[0]
+  var c = OCR_FROM_LOCALE[lang]
+  return c ? { code: c, source: kind } : null
+}
+// Languages the user seems to use but has no OCR pack for, minus the ones
+// they dismissed. English is never suggested (it ships with tesseract).
+function ocrSuggestions(hints, installed, dismissed) {
+  var have = installed || [], no = dismissed || [], out = [], seen = {}
+  var list = Array.isArray(hints) ? hints : []
+  for (var i = 0; i < list.length; i++) {
+    var l = ocrHintLanguage(list[i])
+    if (!l || l.code === "eng" || seen[l.code] || have.indexOf(l.code) >= 0 || no.indexOf(l.code) >= 0) continue
+    seen[l.code] = true
+    var name = l.code
+    for (var j = 0; j < OCR_LANGUAGES.length; j++) if (OCR_LANGUAGES[j].code === l.code) name = OCR_LANGUAGES[j].name
+    out.push({ code: l.code, name: name, source: OCR_HINT_SOURCES[l.source],
+               cmd: "sudo pacman -S tesseract-data-" + l.code,
+               text: "Looks like you also use " + name + " (" + OCR_HINT_SOURCES[l.source] + "). Install OCR for it?" })
+  }
+  return out
+}
+// state.json "ocrDismissed": only plain language codes survive.
+function ocrDismissedOf(v) {
+  return Array.isArray(v) ? v.filter(function(c) { return typeof c === "string" && /^[a-z_]{2,10}$/.test(c) }) : []
+}
+
+// ---- direct feedback (1.27.0) ---------------------------------------------
+// Only used when Clipboard.qml's feedbackEndpoint is set (off until the
+// Worker exists). "website" is the honeypot field: always empty from here.
+function feedbackPayload(text, version) {
+  return JSON.stringify({ message: String(text || "").trim(), version: String(version || ""), website: "" })
+}
+// curl exit code + response body -> the note under the feedback box, and
+// whether it went through (the text is kept when it did not).
+function feedbackResult(exitCode, body) {
+  var r = null
+  try { r = JSON.parse(String(body || "")) } catch (e) { r = null }
+  if (exitCode === 0 && r && r.ok === true) return { ok: true, note: "Sent, thanks!" }
+  if (r && r.error === "slow down") return { ok: false, note: "Too many: try again in a minute" }
+  if (r && r.error === "too long") return { ok: false, note: "Too long (max 4000 characters)" }
+  if (exitCode === 6 || exitCode === 7 || exitCode === 28) return { ok: false, note: "Not sent: offline? Text kept" }
+  return { ok: false, note: "Not sent · Ctrl+Shift+Enter: GitHub" }
+}
+// feedback curl runs with -w '\n%{exitcode}': the last line is curl's exit
+// code, the rest is the Worker's JSON reply.
+function feedbackResultFromCurl(out) {
+  var s = String(out || "").replace(/\s+$/, "")
+  var nl = s.lastIndexOf("\n")
+  var code = parseInt(nl >= 0 ? s.slice(nl + 1) : s, 10)
+  return feedbackResult(isNaN(code) ? -1 : code, nl >= 0 ? s.slice(0, nl) : "")
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     formatBytes: formatBytes,
@@ -1265,6 +1339,12 @@ if (typeof module !== "undefined") {
     CLICK_ACTIONS: CLICK_ACTIONS,
     clickActionOf: clickActionOf,
     dragPlan: dragPlan,
-    searchFilterExamples: SEARCH_FILTER_EXAMPLES
+    searchFilterExamples: SEARCH_FILTER_EXAMPLES,
+    ocrHintLanguage: ocrHintLanguage,
+    ocrSuggestions: ocrSuggestions,
+    ocrDismissedOf: ocrDismissedOf,
+    feedbackPayload: feedbackPayload,
+    feedbackResult: feedbackResult,
+    feedbackResultFromCurl: feedbackResultFromCurl
   }
 }

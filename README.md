@@ -113,6 +113,12 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
   **Copy text**; a QR link or e-mail gets the open button, a Wi-Fi QR code
   copies the password, any other QR code copies its text. Without the tools
   the buttons simply don't appear: `sudo pacman -S tesseract tesseract-data-eng tesseract-data-deu zbar`.
+- Missing OCR languages are suggested in Settings > Text recognition: the
+  plugin looks (read-only) at your locale, Hyprland keyboard layouts and
+  hunspell dictionaries and offers e.g. "Looks like you also use German.
+  Install OCR for it?" with a button that copies
+  `sudo pacman -S tesseract-data-deu`. It never runs sudo itself; **Not now**
+  hides a suggestion for good.
 - Search filters, combinable with normal search text: `type:image|screenshot|text|link|color|file`,
   `app:<window class>` (recorded from 1.16.0 on), `is:pinned`, `today`, `yesterday`, `<30m`, `<2h`, `<3d`.
 
@@ -151,6 +157,15 @@ turns into the incognito icon (󰗹) while incognito is on. It has no hover tool
   `wl-copy --sensitive`; wl-paste 2.3.0 then reports `CLIPBOARD_STATE=sensitive`,
   which Flux also honours, so these copies are not sent to the phone either.
   No guessing from window titles or browser fields.
+
+## Feedback
+
+Settings > Feedback opens a prefilled GitHub issue (label `feedback`) in the
+browser. A direct mode is built in but off: set `feedbackEndpoint` near the
+top of `Clipboard.qml` to the URL of the Nice Clipboard feedback Worker (a
+Cloudflare Worker that files the text as an issue in a private repo, with
+rate limits and no IP storage) and Send posts it directly and says "Sent,
+thanks!". Ctrl+Shift+Enter always uses GitHub.
 
 ## Privacy
 
@@ -276,6 +291,8 @@ bash tests/capture.test.sh     # capture: incognito, password hint, size caps, 0
 bash tests/flux-pause.test.sh  # Flux pause/resume with a stub systemctl (never touches the real fluxd)
 bash tests/queue.test.sh       # paste queue (stub hyprctl / wl-copy / notifier), incl. quiet cancel
 bash tests/version.test.sh      # Clipboard.qml version (sent with feedback) = manifest = CHANGELOG
+bash tests/ocr-hints.test.sh    # OCR language hints from locale / LANGUAGE / locale.conf / keyboard layout (stub hyprctl)
+bash tests/geometry/run-v127.sh # 1.27.0 offscreen: OCR suggestion copy/dismiss, direct feedback to a local fake Worker (writes PNGs)
 bash tests/geometry/run-v126.sh # 1.26.0 offscreen: Alt+1 pastes the first history row, clear count, phone glyph, settings window (writes PNGs)
 bash tests/geometry/run-v125.sh # 1.25.0 offscreen: settings sections and dividers, back arrow, OCR preview notification (writes a PNG)
 bash tests/geometry/run-v121.sh # 1.21.0 offscreen: queue pill, queue dropped on pick/buttons, notifications, OCR help

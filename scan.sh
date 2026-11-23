@@ -11,7 +11,7 @@ IMAGE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/timon.clipboard/images"
 # nothing is ever downloaded. Like Omarchy's own omarchy-capture-text,
 # OMARCHY_OCR_LANGS (e.g. "eng+deu") picks them; without it every installed
 # pack is used (English first, at most 3, so a scan stays quick).
-#   scan.sh --langs     print {"installed":[...],"used":"eng+deu","env":"..."}
+#   scan.sh --langs     print {"installed":[...],"used":"eng+deu","env":"...","hints":[...]}
 ocr_installed() { tesseract --list-langs 2>/dev/null | tail -n +2 | grep -vxE 'osd|equ|snum' | sort -u; }
 ocr_langs() {
   local have want picked=()
@@ -27,10 +27,33 @@ ocr_langs() {
   fi
   local IFS=+; echo "${picked[*]}"
 }
+# 1.27.0: "hints" (for the "install OCR for German?" suggestion): locale
+# values, Hyprland keyboard layouts ("kb:de") and hunspell dictionaries
+# ("dict:de_AT"). Read-only; nothing is installed.
+lang_hints() {
+  local v f l
+  for v in "${LANG:-}" "${LC_ALL:-}" "${LC_MESSAGES:-}" "${LC_CTYPE:-}" "${LC_TIME:-}" "${LC_NUMERIC:-}" "${LC_MONETARY:-}" "${LC_PAPER:-}" "${LC_ADDRESS:-}" "${LC_TELEPHONE:-}" "${LC_MEASUREMENT:-}"; do
+    [[ -n $v ]] && echo "$v"
+  done
+  [[ -n ${LANGUAGE:-} ]] && tr ':' '\n' <<<"$LANGUAGE"
+  for f in /etc/locale.conf "${XDG_CONFIG_HOME:-$HOME/.config}/locale.conf"; do
+    [[ -r $f ]] && sed -nE 's/^(LANG|LANGUAGE|LC_[A-Z]+)="?([^"]*)"?$/\2/p' "$f" | tr ':' '\n'
+  done
+  if command -v hyprctl >/dev/null; then
+    timeout 2 hyprctl -j getoption input:kb_layout 2>/dev/null | jq -r '.str // empty' 2>/dev/null \
+      | tr ',' '\n' | while read -r l; do [[ -n $l ]] && echo "kb:$l"; done
+  fi
+  for f in /usr/share/hunspell/*.dic; do [[ -e $f ]] && { l=${f##*/}; echo "dict:${l%.dic}"; }; done
+  return 0
+}
 if [[ ${1:-} == --langs ]]; then
-  command -v tesseract >/dev/null || { echo '{"installed":[],"used":"","env":""}'; exit 0; }
-  jq -cn --arg inst "$(ocr_installed)" --arg used "$(ocr_langs)" --arg env "${OMARCHY_OCR_LANGS:-}" \
-    '{installed: ($inst | split("\n") | map(select(. != ""))), used: $used, env: $env}'
+  hints=$(lang_hints | awk 'NF && !seen[$0]++')
+  if ! command -v tesseract >/dev/null; then
+    jq -cn --arg hints "$hints" '{installed: [], used: "", env: "", hints: ($hints | split("\n") | map(select(. != "")))}'
+    exit 0
+  fi
+  jq -cn --arg inst "$(ocr_installed)" --arg used "$(ocr_langs)" --arg env "${OMARCHY_OCR_LANGS:-}" --arg hints "$hints" \
+    '{installed: ($inst | split("\n") | map(select(. != ""))), used: $used, env: $env, hints: ($hints | split("\n") | map(select(. != "")))}'
   exit 0
 fi
 img=${1:-}

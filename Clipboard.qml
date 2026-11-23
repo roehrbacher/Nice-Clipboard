@@ -142,7 +142,17 @@ Item {
   // from each captured copy (live) and `clipboard.sh current` on open.
   property string currentClipKey: ""
   // OCR languages for the settings view (scan.sh --langs).
-  property var ocrInfo: ({ installed: [], used: "", env: "" })
+  property var ocrInfo: ({ installed: [], used: "", env: "", hints: [] })
+  // 1.27.0: "Looks like you also use German, install OCR for it?" Languages
+  // come from the locale, keyboard layouts and dictionaries (scan.sh
+  // --langs "hints"); dismissed ones are kept in state.json.
+  property var ocrDismissed: []
+  readonly property var ocrSuggest: ClipboardHistory.ocrSuggestions(root.ocrInfo.hints, root.ocrInfo.installed, root.ocrDismissed)
+  function dismissOcrSuggestion(code) {
+    if (root.ocrDismissed.indexOf(code) >= 0) return
+    root.ocrDismissed = root.ocrDismissed.concat([code])
+    root.writeState()
+  }
   function toggleQueueIndex(index) {
     if (index < 0 || index >= displayModel.count) return
     root.queueKeys = ClipboardHistory.toggleQueued(root.queueKeys, root.rowKey(displayModel.get(index)))
@@ -313,8 +323,15 @@ Item {
   // the browser; the plugin needs no token, GitHub uses the browser login.
   readonly property string feedbackRepo: "roehrbacher/Nice-Clipboard"
   // Kept equal to manifest.json by tests/version.test.sh.
-  readonly property string pluginVersion: "1.26.0"
+  readonly property string pluginVersion: "1.27.0"
   property string feedbackNote: ""
+  // 1.27.0: direct feedback. When set to the feedback Worker's URL (e.g.
+  // "https://feedback.example.com/feedback"), Send posts the text there and
+  // shows "Sent, thanks!": no browser, no GitHub account. Empty = off, and
+  // Send opens the prefilled GitHub issue as before. Off until the Worker
+  // is deployed (see the nice-clipboard-feedback-worker README).
+  readonly property string feedbackEndpoint: ""
+  property var feedbackPendingInput: null
   function feedbackUrl(text) {
     var t = String(text || "").trim()
     var first = t.split("\n")[0]
@@ -324,9 +341,18 @@ Item {
       + encodeURIComponent(title) + "&body=" + encodeURIComponent(body)
   }
   // input: the feedback field that was used (popup page or settings window).
-  function sendFeedback(input) {
+  // viaGithub (Ctrl+Shift+Enter): always the browser link.
+  function sendFeedback(input, viaGithub) {
     var t = input ? input.text.trim() : ""
     if (t === "") { root.feedbackNote = "Write something first"; return false }
+    if (root.feedbackEndpoint !== "" && viaGithub !== true) {
+      if (feedbackProc.running) return false
+      feedbackProc.payload = ClipboardHistory.feedbackPayload(t, root.pluginVersion)
+      root.feedbackPendingInput = input
+      root.feedbackNote = "Sending…"
+      feedbackProc.running = true
+      return true
+    }
     Quickshell.execDetached(["xdg-open", root.feedbackUrl(t)])
     input.text = ""
     root.feedbackNote = "Opened in your browser: submit it there"
@@ -410,7 +436,7 @@ Item {
   }
 
   function writeState() {
-    stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction }) + "\n")
+    stateFile.setText(JSON.stringify({ private: root.privateMode, keepDays: root.keepDays, clickAction: root.clickAction, ocrDismissed: root.ocrDismissed }) + "\n")
   }
 
   function loadState(raw) {
@@ -418,6 +444,7 @@ Item {
     try { st = JSON.parse(String(raw || "{}")) || {} } catch (e) { st = {} }
     root.privateMode = st.private === true
     root.clickAction = ClipboardHistory.clickActionOf(st.clickAction)
+    root.ocrDismissed = ClipboardHistory.ocrDismissedOf(st.ocrDismissed)
     var days = ClipboardHistory.keepDaysOf(st.keepDays)
     if (days !== root.keepDays) { root.keepDays = days; root.pruneOld() }
     // Also runs at shell start: resumes Flux if private mode ended while the
@@ -1209,7 +1236,7 @@ Item {
       onStreamFinished: {
         var st = null
         try { st = JSON.parse(String(text)) } catch (e) { st = null }
-        if (st && Array.isArray(st.installed)) root.ocrInfo = { installed: st.installed, used: String(st.used || ""), env: String(st.env || "") }
+        if (st && Array.isArray(st.installed)) root.ocrInfo = { installed: st.installed, used: String(st.used || ""), env: String(st.env || ""), hints: Array.isArray(st.hints) ? st.hints : [] }
       }
     }
   }
@@ -1238,6 +1265,28 @@ Item {
     if (i < 0) return
     Quickshell.execDetached([root.helper, "copy", String(i)])
     root.currentClipKey = ClipboardHistory.clipKeyOf(root.history[i], Qt.md5)
+  }
+
+  // 1.27.0: direct feedback POST (only with feedbackEndpoint set). The text
+  // goes over stdin, never argv; the reply is the Worker's JSON plus curl's
+  // exit code on the last line.
+  Process {
+    id: feedbackProc
+    property string payload: ""
+    command: ["curl", "-sS", "--max-time", "10", "-H", "Content-Type: application/json",
+              "--data-binary", "@-", "-w", "\n%{exitcode}", root.feedbackEndpoint]
+    stdinEnabled: true
+    onStarted: { write(payload); payload = ""; stdinEnabled = false }
+    onExited: stdinEnabled = true
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var r = ClipboardHistory.feedbackResultFromCurl(text)
+        if (r.ok && root.feedbackPendingInput) root.feedbackPendingInput.text = ""
+        root.feedbackPendingInput = null
+        root.feedbackNote = r.note
+      }
+    }
   }
 
   // queue.sh start: the items go over stdin (never argv).
@@ -1930,6 +1979,65 @@ Item {
                   delegate: infoValueRow
                 }
 
+                // 1.27.0: suggestions from the locale / keyboard layout /
+                // dictionaries. Copy puts the pacman command on the
+                // clipboard (never run here: it needs sudo); ✕ hides it for good.
+                Repeater {
+                  model: root.ocrSuggest
+                  delegate: Column {
+                    required property var modelData
+                    objectName: "clipOcrSuggest"
+                    readonly property string code: modelData.code
+                    x: Style.space(10)
+                    width: sec.width - Style.space(20)
+                    spacing: Style.spacing.xs
+                    topPadding: Style.space(6)
+
+                    Text {
+                      objectName: "clipOcrSuggestText"
+                      width: parent.width
+                      wrapMode: Text.WordWrap
+                      textFormat: Text.PlainText
+                      text: "󰗊  " + modelData.text
+                      color: root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                    }
+                    Row {
+                      spacing: Style.spacing.xs
+                      Button {
+                        objectName: "clipOcrSuggestCopy"
+                        text: "Copy: " + modelData.cmd
+                        iconText: "󰆏"
+                        fontSize: Style.font.caption
+                        iconSize: Style.font.caption
+                        foreground: root.foreground
+                        fontFamily: root.fontFamily
+                        horizontalPadding: Style.spacing.sm
+                        verticalPadding: Style.spacing.controlPaddingY
+                        bordered: true
+                        active: true
+                        tooltipText: "Copies the command; paste it in a terminal (needs your password)"
+                        onClicked: root.copyOcrInstall({ name: modelData.name, cmd: modelData.cmd, installed: false })
+                      }
+                      Button {
+                        objectName: "clipOcrSuggestDismiss"
+                        text: "Not now"
+                        iconText: "󰅖"
+                        fontSize: Style.font.caption
+                        iconSize: Style.font.caption
+                        foreground: root.foreground
+                        fontFamily: root.fontFamily
+                        horizontalPadding: Style.spacing.sm
+                        verticalPadding: Style.spacing.controlPaddingY
+                        bordered: true
+                        tooltipText: "Don't suggest " + modelData.name + " again"
+                        onClicked: root.dismissOcrSuggestion(modelData.code)
+                      }
+                    }
+                  }
+                }
+
                 Text {
                   objectName: "clipOcrHelp"
                   width: parent.width
@@ -2076,7 +2184,7 @@ Item {
                     onTextChanged: if (text !== "") root.feedbackNote = ""
                     // Ctrl+Enter sends, Esc leaves the field; other keys type.
                     Keys.onPressed: function(event) {
-                      if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { root.sendFeedback(feedbackInput); event.accepted = true }
+                      if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { root.sendFeedback(feedbackInput, (event.modifiers & Qt.ShiftModifier) !== 0); event.accepted = true }
                       else if (event.key === Qt.Key_Escape) { if (sec.inWindow) settingsKeys.forceActiveFocus(); else searchInput.forceActiveFocus(); event.accepted = true }
                     }
 
@@ -2108,10 +2216,15 @@ Item {
                     font.pixelSize: Style.font.body
                   }
                   Text {
+                    objectName: "feedbackNote"
                     anchors.right: parent.right
                     anchors.rightMargin: Style.space(10)
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(150)
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.feedbackNote !== "" ? root.feedbackNote : "Ctrl+Enter · opens a GitHub issue"
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideLeft
+                    text: root.feedbackNote !== "" ? root.feedbackNote : (root.feedbackEndpoint !== "" ? "Ctrl+Enter · sent directly" : "Ctrl+Enter · opens a GitHub issue")
                     color: root.dimText
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption

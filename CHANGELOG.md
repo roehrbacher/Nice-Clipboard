@@ -2,6 +2,11 @@
 
 Newest first. Older history is in the git log.
 
+## 1.27.0
+
+- Text recognition suggests missing OCR languages: when your locale (LANG, LANGUAGE, LC_*, locale.conf), a Hyprland keyboard layout (`hyprctl getoption input:kb_layout`) or a hunspell dictionary points to a language without a tesseract pack, settings say e.g. "Looks like you also use German (your language settings). Install OCR for it?" with a **Copy: sudo pacman -S tesseract-data-deu** button and **Not now** (remembered in state.json as `ocrDismissed`). The plugin never runs sudo. Detection is read-only (`scan.sh --langs` now also prints `hints`); the mapping is tested in `tests/history.test.js` and `tests/ocr-hints.test.sh`.
+- Direct feedback, switched off for now: with `feedbackEndpoint` in Clipboard.qml set to the feedback Worker's URL, Send posts the text there (over curl's stdin, never argv) and shows "Sent, thanks!"; no browser and no GitHub account. Empty (the default) keeps the prefilled GitHub issue. Ctrl+Shift+Enter always opens GitHub. Failed sends keep the text and say why.
+
 ## 1.26.0
 
 - Alt+1…9 in the popup pastes history items 1…9; pinned items are skipped (they keep Alt+Shift+1…9, which works anywhere). Before, pins took the first numbers, so with 4 pins Alt+1 pasted a pin and the first history item was Alt+5. Row hints say Alt+N on history rows and Alt+Shift+N on pins.
